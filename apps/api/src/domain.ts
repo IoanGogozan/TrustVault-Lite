@@ -1,7 +1,10 @@
+import type { AuditEvent } from "@trustvault/audit";
+
 export type UserStatus = "active" | "disabled";
 export type MembershipRole = "owner" | "admin" | "member" | "viewer" | "auditor";
 export type MembershipStatus = "active" | "invited" | "suspended";
 export type InvitationStatus = "pending" | "accepted" | "revoked";
+export type DocumentClassification = "public" | "internal" | "confidential" | "restricted";
 
 export type User = {
   id: string;
@@ -27,6 +30,29 @@ export type Membership = {
   role: MembershipRole;
   status: MembershipStatus;
   mfaRequired: boolean;
+  projectIds?: string[];
+  createdAt: Date;
+};
+
+export type Project = {
+  id: string;
+  tenantId: string;
+  name: string;
+  classification: DocumentClassification;
+  createdBy: string;
+  createdAt: Date;
+};
+
+export type Document = {
+  id: string;
+  tenantId: string;
+  projectId: string;
+  title: string;
+  classification: DocumentClassification;
+  storageKey: string;
+  currentVersionId: string;
+  createdBy: string;
+  deletedAt?: Date;
   createdAt: Date;
 };
 
@@ -54,7 +80,10 @@ export type AppStore = {
   users: User[];
   tenants: Tenant[];
   memberships: Membership[];
+  projects: Project[];
+  documents: Document[];
   invitations: Invitation[];
+  auditEvents: AuditEvent[];
   sessions: Session[];
 };
 
@@ -76,6 +105,22 @@ export function createDemoStore(): AppStore {
         email: "viewer@acme.test",
         name: "Acme Viewer",
         identityProviderSubject: "oidc|acme-viewer",
+        status: "active",
+        createdAt: now
+      },
+      {
+        id: "user_member_acme",
+        email: "member@acme.test",
+        name: "Acme Member",
+        identityProviderSubject: "oidc|acme-member",
+        status: "active",
+        createdAt: now
+      },
+      {
+        id: "user_auditor_acme",
+        email: "auditor@acme.test",
+        name: "Acme Auditor",
+        identityProviderSubject: "oidc|acme-auditor",
         status: "active",
         createdAt: now
       }
@@ -113,10 +158,84 @@ export function createDemoStore(): AppStore {
         role: "viewer",
         status: "active",
         mfaRequired: true,
+        projectIds: ["project_acme_soc2"],
+        createdAt: now
+      },
+      {
+        id: "membership_acme_member",
+        tenantId: "tenant_acme",
+        userId: "user_member_acme",
+        role: "member",
+        status: "active",
+        mfaRequired: true,
+        projectIds: ["project_acme_soc2"],
+        createdAt: now
+      },
+      {
+        id: "membership_acme_auditor",
+        tenantId: "tenant_acme",
+        userId: "user_auditor_acme",
+        role: "auditor",
+        status: "active",
+        mfaRequired: true,
+        createdAt: now
+      }
+    ],
+    projects: [
+      {
+        id: "project_acme_soc2",
+        tenantId: "tenant_acme",
+        name: "SOC 2 Evidence",
+        classification: "confidential",
+        createdBy: "user_owner_acme",
+        createdAt: now
+      },
+      {
+        id: "project_globex_legal",
+        tenantId: "tenant_globex",
+        name: "Legal Review",
+        classification: "restricted",
+        createdBy: "system",
+        createdAt: now
+      }
+    ],
+    documents: [
+      {
+        id: "document_acme_policy",
+        tenantId: "tenant_acme",
+        projectId: "project_acme_soc2",
+        title: "Security Policy",
+        classification: "confidential",
+        storageKey: "tenant_acme/documents/security-policy.pdf",
+        currentVersionId: "version_acme_policy_1",
+        createdBy: "user_owner_acme",
+        createdAt: now
+      },
+      {
+        id: "document_acme_restricted",
+        tenantId: "tenant_acme",
+        projectId: "project_acme_soc2",
+        title: "Restricted Board Report",
+        classification: "restricted",
+        storageKey: "tenant_acme/documents/restricted-board-report.pdf",
+        currentVersionId: "version_acme_restricted_1",
+        createdBy: "user_owner_acme",
+        createdAt: now
+      },
+      {
+        id: "document_globex_contract",
+        tenantId: "tenant_globex",
+        projectId: "project_globex_legal",
+        title: "Globex Contract",
+        classification: "restricted",
+        storageKey: "tenant_globex/documents/contract.pdf",
+        currentVersionId: "version_globex_contract_1",
+        createdBy: "system",
         createdAt: now
       }
     ],
     invitations: [],
+    auditEvents: [],
     sessions: []
   };
 }

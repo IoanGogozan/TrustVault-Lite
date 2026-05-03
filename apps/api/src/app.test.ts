@@ -227,14 +227,14 @@ describe("phase 1 auth and tenant foundation", () => {
       method: "POST",
       url: "/tenant/invitations",
       headers: { cookie, "x-tenant-id": "tenant_acme" },
-      payload: { email: "auditor@acme.test", role: "auditor" }
+      payload: { email: "external-auditor@acme.test", role: "auditor" }
     });
 
     expect(response.statusCode).toBe(201);
     expect(response.json()).toMatchObject({
       invitation: {
         tenantId: "tenant_acme",
-        email: "auditor@acme.test",
+        email: "external-auditor@acme.test",
         role: "auditor",
         status: "pending"
       }
@@ -243,7 +243,8 @@ describe("phase 1 auth and tenant foundation", () => {
   });
 
   it("denies invitation creation for viewers", async () => {
-    const app = buildApp({ store: createDemoStore() });
+    const store = createDemoStore();
+    const app = buildApp({ store });
     const cookie = await login(app, "viewer@acme.test");
 
     const response = await app.inject({
@@ -255,6 +256,17 @@ describe("phase 1 auth and tenant foundation", () => {
 
     expect(response.statusCode).toBe(403);
     expect(response.json()).toEqual({ error: "permission_denied" });
+    expect(store.auditEvents).toEqual([
+      expect.objectContaining({
+        action: "authorization.denied",
+        entityType: "invitation",
+        result: "failure",
+        metadata: expect.objectContaining({
+          requestedAction: "members:invite",
+          reason: "permission_missing"
+        })
+      })
+    ]);
   });
 
   it("accepts an invitation and creates an active membership", async () => {
@@ -312,6 +324,163 @@ describe("phase 1 auth and tenant foundation", () => {
 
     expect(response.statusCode).toBe(404);
     expect(response.json()).toEqual({ error: "invite_not_found" });
+  });
+
+  it("filters document responses and does not expose storage internals", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const cookie = await login(app, "viewer@acme.test");
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/documents/document_acme_policy",
+      headers: { cookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().document).toMatchObject({
+      id: "document_acme_policy",
+      tenantId: "tenant_acme",
+      projectId: "project_acme_soc2",
+      title: "Security Policy",
+      classification: "confidential"
+    });
+    expect(response.json().document).not.toHaveProperty("storageKey");
+    expect(response.json().document).not.toHaveProperty("currentVersionId");
+  });
+
+  it("denies document creation for viewers", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const cookie = await login(app, "viewer@acme.test");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/documents",
+      headers: { cookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        title: "Viewer Upload",
+        projectId: "project_acme_soc2",
+        classification: "confidential"
+      }
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: "permission_denied" });
+    expect(store.auditEvents.at(-1)).toMatchObject({
+      action: "authorization.denied",
+      entityType: "document",
+      result: "failure",
+      metadata: expect.objectContaining({
+        requestedAction: "documents:create",
+        reason: "permission_missing"
+      })
+    });
+  });
+
+  it("allows members to create documents but ignores tenant mass assignment", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const cookie = await login(app, "member@acme.test");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/documents",
+      headers: { cookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        title: "Evidence Upload",
+        projectId: "project_acme_soc2",
+        classification: "confidential",
+        tenantId: "tenant_globex",
+        storageKey: "attacker-controlled-path"
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().document).toMatchObject({
+      tenantId: "tenant_acme",
+      title: "Evidence Upload",
+      projectId: "project_acme_soc2"
+    });
+    expect(response.json().document).not.toHaveProperty("storageKey");
+  });
+
+  it("denies document deletion for members", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const cookie = await login(app, "member@acme.test");
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/documents/document_acme_policy",
+      headers: { cookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: "permission_denied" });
+    expect(store.documents.find((document) => document.id === "document_acme_policy")).not.toHaveProperty(
+      "deletedAt"
+    );
+  });
+
+  it("denies document creation for auditors", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const cookie = await login(app, "auditor@acme.test");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/documents",
+      headers: { cookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        title: "Audit Upload",
+        projectId: "project_acme_soc2"
+      }
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: "permission_denied" });
+  });
+
+  it("logs authorization denial for cross-tenant document access", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const cookie = await login(app, "owner@acme.test");
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/documents/document_globex_contract",
+      headers: { cookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: "permission_denied" });
+    expect(store.auditEvents.at(-1)).toMatchObject({
+      tenantId: "tenant_acme",
+      actorUserId: "user_owner_acme",
+      action: "authorization.denied",
+      entityType: "document",
+      entityId: "document_globex_contract",
+      result: "failure",
+      metadata: expect.objectContaining({
+        requestedAction: "documents:read",
+        reason: "tenant_mismatch",
+        resourceTenantId: "tenant_globex"
+      })
+    });
+  });
+
+  it("allows owners to soft delete documents", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const cookie = await login(app, "owner@acme.test");
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: "/documents/document_acme_policy",
+      headers: { cookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(response.statusCode).toBe(204);
+    expect(store.documents.find((document) => document.id === "document_acme_policy")?.deletedAt)
+      .toBeInstanceOf(Date);
   });
 });
 

@@ -10,10 +10,12 @@ import {
 import {
   createDemoStore,
   type AppStore,
+  type DocumentClassification,
   type MembershipRole,
   type User
 } from "./domain.js";
 import { clearSessionCookie, setSessionCookie } from "./http.js";
+import { requirePermission } from "./authorization.js";
 
 export type BuildAppOptions = {
   store?: AppStore;
@@ -201,8 +203,13 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       return;
     }
 
-    if (!canInviteMembers(request.tenantContext.membership.role)) {
-      return reply.code(403).send({ error: "permission_denied" });
+    const allowed = await requirePermission(store, request, reply, "members:invite", {
+      tenantId: request.tenantContext.tenant.id,
+      entityType: "invitation"
+    });
+
+    if (!allowed) {
+      return;
     }
 
     const email = normalizeEmail(request.body.email);
@@ -307,6 +314,169 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     });
   });
 
+  app.get("/documents", async (request, reply) => {
+    await requireTenantContext(store, request, reply);
+
+    if (!request.tenantContext) {
+      return;
+    }
+
+    const allowed = await requirePermission(store, request, reply, "documents:read", {
+      tenantId: request.tenantContext.tenant.id,
+      entityType: "document"
+    });
+
+    if (!allowed) {
+      return;
+    }
+
+    return {
+      documents: store.documents
+        .filter(
+          (document) =>
+            document.tenantId === request.tenantContext?.tenant.id && !document.deletedAt
+        )
+        .filter((document) =>
+          request.tenantContext?.membership.role === "owner" ||
+          request.tenantContext?.membership.role === "admin" ||
+          request.tenantContext?.membership.role === "auditor"
+            ? true
+            : request.tenantContext?.membership.projectIds?.includes(document.projectId)
+        )
+        .map(toDocumentResponse)
+    };
+  });
+
+  app.post<{
+    Body: {
+      title?: string;
+      projectId?: string;
+      classification?: DocumentClassification;
+      tenantId?: string;
+      storageKey?: string;
+    };
+  }>("/documents", async (request, reply) => {
+    await requireTenantContext(store, request, reply);
+
+    if (!request.tenantContext) {
+      return;
+    }
+
+    const title = normalizeName(request.body.title);
+    const projectId = request.body.projectId;
+    const classification = request.body.classification ?? "confidential";
+
+    if (!title) {
+      return reply.code(400).send({ error: "document_title_required" });
+    }
+
+    if (!projectId) {
+      return reply.code(400).send({ error: "project_required" });
+    }
+
+    if (!isDocumentClassification(classification)) {
+      return reply.code(400).send({ error: "invalid_classification" });
+    }
+
+    const project = store.projects.find((candidate) => candidate.id === projectId);
+
+    if (!project) {
+      return reply.code(404).send({ error: "project_not_found" });
+    }
+
+    const allowed = await requirePermission(store, request, reply, "documents:create", {
+      tenantId: project.tenantId,
+      projectId: project.id,
+      classification,
+      entityType: "document"
+    });
+
+    if (!allowed) {
+      return;
+    }
+
+    const document = {
+      id: `document_${randomUUID()}`,
+      tenantId: request.tenantContext.tenant.id,
+      projectId: project.id,
+      title,
+      classification,
+      storageKey: `${request.tenantContext.tenant.id}/documents/${randomUUID()}`,
+      currentVersionId: `version_${randomUUID()}`,
+      createdBy: request.tenantContext.user.id,
+      createdAt: new Date()
+    };
+
+    store.documents.push(document);
+
+    return reply.code(201).send({ document: toDocumentResponse(document) });
+  });
+
+  app.get<{ Params: { documentId: string } }>("/documents/:documentId", async (request, reply) => {
+    await requireTenantContext(store, request, reply);
+
+    if (!request.tenantContext) {
+      return;
+    }
+
+    const document = store.documents.find(
+      (candidate) => candidate.id === request.params.documentId && !candidate.deletedAt
+    );
+
+    if (!document) {
+      return reply.code(404).send({ error: "document_not_found" });
+    }
+
+    const allowed = await requirePermission(store, request, reply, "documents:read", {
+      tenantId: document.tenantId,
+      projectId: document.projectId,
+      classification: document.classification,
+      entityType: "document",
+      entityId: document.id
+    });
+
+    if (!allowed) {
+      return;
+    }
+
+    return { document: toDocumentResponse(document) };
+  });
+
+  app.delete<{ Params: { documentId: string } }>(
+    "/documents/:documentId",
+    async (request, reply) => {
+      await requireTenantContext(store, request, reply);
+
+      if (!request.tenantContext) {
+        return;
+      }
+
+      const document = store.documents.find(
+        (candidate) => candidate.id === request.params.documentId && !candidate.deletedAt
+      );
+
+      if (!document) {
+        return reply.code(404).send({ error: "document_not_found" });
+      }
+
+      const allowed = await requirePermission(store, request, reply, "documents:delete", {
+        tenantId: document.tenantId,
+        projectId: document.projectId,
+        classification: document.classification,
+        entityType: "document",
+        entityId: document.id
+      });
+
+      if (!allowed) {
+        return;
+      }
+
+      document.deletedAt = new Date();
+
+      return reply.code(204).send();
+    }
+  );
+
   return app;
 }
 
@@ -332,12 +502,37 @@ function normalizeSlug(value: string): string | undefined {
   return slug || undefined;
 }
 
-function canInviteMembers(role: MembershipRole): boolean {
-  return role === "owner" || role === "admin";
-}
-
 function isInvitableRole(role: string): role is MembershipRole {
   return role === "admin" || role === "member" || role === "viewer" || role === "auditor";
+}
+
+function isDocumentClassification(value: string): value is DocumentClassification {
+  return (
+    value === "public" ||
+    value === "internal" ||
+    value === "confidential" ||
+    value === "restricted"
+  );
+}
+
+function toDocumentResponse(document: {
+  id: string;
+  tenantId: string;
+  projectId: string;
+  title: string;
+  classification: DocumentClassification;
+  createdBy: string;
+  createdAt: Date;
+}) {
+  return {
+    id: document.id,
+    tenantId: document.tenantId,
+    projectId: document.projectId,
+    title: document.title,
+    classification: document.classification,
+    createdBy: document.createdBy,
+    createdAt: document.createdAt.toISOString()
+  };
 }
 
 function hashSecret(secret: string): string {
