@@ -1,6 +1,7 @@
 export type UserStatus = "active" | "disabled";
 export type MembershipRole = "owner" | "admin" | "member" | "viewer" | "auditor";
 export type MembershipStatus = "active" | "invited" | "suspended";
+export type InvitationStatus = "pending" | "accepted" | "revoked";
 
 export type User = {
   id: string;
@@ -36,10 +37,24 @@ export type Session = {
   revokedAt?: Date;
 };
 
+export type Invitation = {
+  id: string;
+  tenantId: string;
+  email: string;
+  role: MembershipRole;
+  tokenHash: string;
+  status: InvitationStatus;
+  invitedBy: string;
+  acceptedBy?: string;
+  expiresAt: Date;
+  createdAt: Date;
+};
+
 export type AppStore = {
   users: User[];
   tenants: Tenant[];
   memberships: Membership[];
+  invitations: Invitation[];
   sessions: Session[];
 };
 
@@ -101,7 +116,7 @@ export function createDemoStore(): AppStore {
         createdAt: now
       }
     ],
+    invitations: [],
     sessions: []
   };
 }
-

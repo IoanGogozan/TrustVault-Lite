@@ -1,12 +1,18 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { readBaseConfig } from "@trustvault/config";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   createSession,
   requireAuth,
   requireTenantContext,
   revokeSession
 } from "./auth.js";
-import { createDemoStore, type AppStore } from "./domain.js";
+import {
+  createDemoStore,
+  type AppStore,
+  type MembershipRole,
+  type User
+} from "./domain.js";
 import { clearSessionCookie, setSessionCookie } from "./http.js";
 
 export type BuildAppOptions = {
@@ -86,6 +92,58 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     };
   });
 
+  app.post<{ Body: { name?: string; slug?: string } }>("/tenants", async (request, reply) => {
+    await requireAuth(store, request, reply);
+
+    if (!request.auth) {
+      return;
+    }
+
+    const name = normalizeName(request.body.name);
+
+    if (!name) {
+      return reply.code(400).send({ error: "tenant_name_required" });
+    }
+
+    const slug = normalizeSlug(request.body.slug ?? name);
+
+    if (!slug) {
+      return reply.code(400).send({ error: "tenant_slug_required" });
+    }
+
+    if (store.tenants.some((tenant) => tenant.slug === slug)) {
+      return reply.code(409).send({ error: "tenant_slug_taken" });
+    }
+
+    const tenant = {
+      id: `tenant_${randomUUID()}`,
+      name,
+      slug,
+      plan: "demo" as const,
+      createdAt: new Date()
+    };
+
+    store.tenants.push(tenant);
+    store.memberships.push({
+      id: `membership_${randomUUID()}`,
+      tenantId: tenant.id,
+      userId: request.auth.user.id,
+      role: "owner",
+      status: "active",
+      mfaRequired: true,
+      createdAt: new Date()
+    });
+
+    return reply.code(201).send({
+      tenant: {
+        id: tenant.id,
+        name: tenant.name,
+        slug: tenant.slug,
+        plan: tenant.plan
+      }
+    });
+  });
+
   app.get("/tenant/current", async (request, reply) => {
     await requireTenantContext(store, request, reply);
 
@@ -107,6 +165,179 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     };
   });
 
+  app.post<{
+    Body: { email?: string; role?: MembershipRole };
+  }>("/tenant/invitations", async (request, reply) => {
+    await requireTenantContext(store, request, reply);
+
+    if (!request.tenantContext) {
+      return;
+    }
+
+    if (!canInviteMembers(request.tenantContext.membership.role)) {
+      return reply.code(403).send({ error: "permission_denied" });
+    }
+
+    const email = normalizeEmail(request.body.email);
+    const role = request.body.role;
+
+    if (!email) {
+      return reply.code(400).send({ error: "email_required" });
+    }
+
+    if (!role || !isInvitableRole(role)) {
+      return reply.code(400).send({ error: "invalid_role" });
+    }
+
+    const existingMembership = store.memberships.find((membership) => {
+      const user = store.users.find((candidate) => candidate.id === membership.userId);
+
+      return (
+        membership.tenantId === request.tenantContext?.tenant.id &&
+        user?.email === email &&
+        membership.status !== "suspended"
+      );
+    });
+
+    if (existingMembership) {
+      return reply.code(409).send({ error: "membership_already_exists" });
+    }
+
+    const token = `invite_${randomBytes(24).toString("base64url")}`;
+    const invitation = {
+      id: `invite_${randomUUID()}`,
+      tenantId: request.tenantContext.tenant.id,
+      email,
+      role,
+      tokenHash: hashSecret(token),
+      status: "pending" as const,
+      invitedBy: request.tenantContext.user.id,
+      expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      createdAt: new Date()
+    };
+
+    store.invitations.push(invitation);
+
+    return reply.code(201).send({
+      invitation: {
+        id: invitation.id,
+        tenantId: invitation.tenantId,
+        email: invitation.email,
+        role: invitation.role,
+        status: invitation.status,
+        expiresAt: invitation.expiresAt.toISOString()
+      },
+      inviteToken: token
+    });
+  });
+
+  app.post<{
+    Body: { token?: string; name?: string };
+  }>("/invitations/accept", async (request, reply) => {
+    const token = request.body.token;
+
+    if (!token) {
+      return reply.code(400).send({ error: "invite_token_required" });
+    }
+
+    const invitation = store.invitations.find(
+      (candidate) =>
+        candidate.tokenHash === hashSecret(token) &&
+        candidate.status === "pending" &&
+        candidate.expiresAt > new Date()
+    );
+
+    if (!invitation) {
+      return reply.code(404).send({ error: "invite_not_found" });
+    }
+
+    const user = findOrCreateInvitedUser(store, invitation.email, request.body.name);
+
+    store.memberships.push({
+      id: `membership_${randomUUID()}`,
+      tenantId: invitation.tenantId,
+      userId: user.id,
+      role: invitation.role,
+      status: "active",
+      mfaRequired: true,
+      createdAt: new Date()
+    });
+
+    invitation.status = "accepted";
+    invitation.acceptedBy = user.id;
+
+    const session = createSession(store, user.id);
+    setSessionCookie(reply, session.id);
+
+    return reply.code(200).send({
+      user: {
+        id: user.id,
+        email: user.email,
+        name: user.name
+      },
+      tenantId: invitation.tenantId,
+      role: invitation.role
+    });
+  });
+
   return app;
 }
 
+function normalizeName(name: string | undefined): string | undefined {
+  const normalized = name?.trim().replace(/\s+/g, " ");
+
+  return normalized || undefined;
+}
+
+function normalizeEmail(email: string | undefined): string | undefined {
+  const normalized = email?.trim().toLowerCase();
+
+  return normalized && normalized.includes("@") ? normalized : undefined;
+}
+
+function normalizeSlug(value: string): string | undefined {
+  const slug = value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  return slug || undefined;
+}
+
+function canInviteMembers(role: MembershipRole): boolean {
+  return role === "owner" || role === "admin";
+}
+
+function isInvitableRole(role: string): role is MembershipRole {
+  return role === "admin" || role === "member" || role === "viewer" || role === "auditor";
+}
+
+function hashSecret(secret: string): string {
+  return createHash("sha256").update(secret).digest("hex");
+}
+
+function findOrCreateInvitedUser(
+  store: AppStore,
+  email: string,
+  name: string | undefined
+): User {
+  const existingUser = store.users.find((user) => user.email === email);
+
+  if (existingUser) {
+    return existingUser;
+  }
+
+  const user = {
+    id: `user_${randomUUID()}`,
+    email,
+    name: normalizeName(name) ?? email.split("@")[0] ?? "Invited User",
+    identityProviderSubject: `demo-invite|${email}`,
+    status: "active" as const,
+    createdAt: new Date()
+  };
+
+  store.users.push(user);
+
+  return user;
+}

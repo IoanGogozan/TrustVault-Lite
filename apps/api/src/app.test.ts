@@ -133,6 +133,153 @@ describe("phase 1 auth and tenant foundation", () => {
 
     expect(me.statusCode).toBe(401);
   });
+
+  it("creates a tenant and assigns owner membership to the current user", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const cookie = await login(app, "owner@acme.test");
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/tenants",
+      headers: { cookie },
+      payload: { name: "Northwind Security", slug: "northwind-security" }
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({
+      tenant: {
+        name: "Northwind Security",
+        slug: "northwind-security",
+        plan: "demo"
+      }
+    });
+
+    const me = await app.inject({
+      method: "GET",
+      url: "/me",
+      headers: { cookie }
+    });
+
+    expect(me.json().memberships).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tenantName: "Northwind Security",
+          tenantSlug: "northwind-security",
+          role: "owner"
+        })
+      ])
+    );
+  });
+
+  it("rejects duplicate tenant slugs", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const cookie = await login(app, "owner@acme.test");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/tenants",
+      headers: { cookie },
+      payload: { name: "Acme Corp", slug: "acme" }
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toEqual({ error: "tenant_slug_taken" });
+  });
+
+  it("allows owners to invite a new member", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const cookie = await login(app, "owner@acme.test");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/tenant/invitations",
+      headers: { cookie, "x-tenant-id": "tenant_acme" },
+      payload: { email: "auditor@acme.test", role: "auditor" }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json()).toMatchObject({
+      invitation: {
+        tenantId: "tenant_acme",
+        email: "auditor@acme.test",
+        role: "auditor",
+        status: "pending"
+      }
+    });
+    expect(response.json().inviteToken).toEqual(expect.stringMatching(/^invite_/));
+  });
+
+  it("denies invitation creation for viewers", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const cookie = await login(app, "viewer@acme.test");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/tenant/invitations",
+      headers: { cookie, "x-tenant-id": "tenant_acme" },
+      payload: { email: "new-viewer@acme.test", role: "viewer" }
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: "permission_denied" });
+  });
+
+  it("accepts an invitation and creates an active membership", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const ownerCookie = await login(app, "owner@acme.test");
+
+    const invitation = await app.inject({
+      method: "POST",
+      url: "/tenant/invitations",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" },
+      payload: { email: "new-member@acme.test", role: "member" }
+    });
+    const inviteToken = invitation.json().inviteToken;
+
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/invitations/accept",
+      payload: { token: inviteToken, name: "New Member" }
+    });
+
+    expect(accepted.statusCode).toBe(200);
+    expect(accepted.headers["set-cookie"]).toContain("tv_session=");
+    expect(accepted.json()).toMatchObject({
+      user: {
+        email: "new-member@acme.test",
+        name: "New Member"
+      },
+      tenantId: "tenant_acme",
+      role: "member"
+    });
+
+    const me = await app.inject({
+      method: "GET",
+      url: "/me",
+      headers: { cookie: accepted.headers["set-cookie"] as string }
+    });
+
+    expect(me.statusCode).toBe(200);
+    expect(me.json().memberships).toEqual([
+      expect.objectContaining({
+        tenantId: "tenant_acme",
+        role: "member"
+      })
+    ]);
+  });
+
+  it("rejects invalid invitation tokens", async () => {
+    const app = buildApp({ store: createDemoStore() });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/invitations/accept",
+      payload: { token: "invite_invalid" }
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({ error: "invite_not_found" });
+  });
 });
 
 async function login(app: ReturnType<typeof buildApp>, email: string): Promise<string> {
@@ -150,4 +297,3 @@ async function login(app: ReturnType<typeof buildApp>, email: string): Promise<s
 
   return cookie;
 }
-
