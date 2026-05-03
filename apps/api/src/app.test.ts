@@ -614,6 +614,157 @@ describe("phase 1 auth and tenant foundation", () => {
     expect(store.documents.find((document) => document.id === "document_acme_policy")?.deletedAt)
       .toBeInstanceOf(Date);
   });
+
+  it("denies document version uploads for viewers", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const cookie = await login(app, "viewer@acme.test");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/documents/document_acme_policy/versions",
+      headers: { cookie, "x-tenant-id": "tenant_acme" },
+      payload: pdfUploadPayload()
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: "permission_denied" });
+  });
+
+  it("rejects forbidden upload extensions", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const cookie = await login(app, "member@acme.test");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/documents/document_acme_policy/versions",
+      headers: { cookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        ...pdfUploadPayload(),
+        originalFilename: "payload.exe"
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "extension_not_allowed" });
+  });
+
+  it("rejects upload content with mismatched file signature", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const cookie = await login(app, "member@acme.test");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/documents/document_acme_policy/versions",
+      headers: { cookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        ...pdfUploadPayload(),
+        contentBase64: Buffer.from([0xff, 0xd8, 0xff, 0x00, 0x00]).toString("base64")
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "file_signature_mismatch" });
+  });
+
+  it("stores uploaded versions as pending scan and blocks download until clean", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const cookie = await login(app, "member@acme.test");
+
+    const upload = await app.inject({
+      method: "POST",
+      url: "/documents/document_acme_policy/versions",
+      headers: { cookie, "x-tenant-id": "tenant_acme" },
+      payload: pdfUploadPayload()
+    });
+
+    expect(upload.statusCode).toBe(201);
+    expect(upload.json().version).toMatchObject({
+      documentId: "document_acme_policy",
+      originalFilename: "evidence.pdf",
+      mimeType: "application/pdf",
+      scanStatus: "pending_scan"
+    });
+    expect(upload.json().version).not.toHaveProperty("storageKey");
+
+    const download = await app.inject({
+      method: "GET",
+      url: "/documents/document_acme_policy/download",
+      headers: { cookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(download.statusCode).toBe(409);
+    expect(download.json()).toEqual({ error: "file_not_available_until_clean_scan" });
+  });
+
+  it("allows download metadata after a clean scan without exposing storage path", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const memberCookie = await login(app, "member@acme.test");
+    const adminCookie = await login(app, "admin@acme.test");
+
+    const upload = await app.inject({
+      method: "POST",
+      url: "/documents/document_acme_policy/versions",
+      headers: { cookie: memberCookie, "x-tenant-id": "tenant_acme" },
+      payload: pdfUploadPayload()
+    });
+    const versionId = upload.json().version.id;
+
+    const scan = await app.inject({
+      method: "POST",
+      url: `/document-versions/${versionId}/scan-result`,
+      headers: { cookie: adminCookie, "x-tenant-id": "tenant_acme" },
+      payload: { scanStatus: "clean" }
+    });
+
+    expect(scan.statusCode).toBe(200);
+
+    const download = await app.inject({
+      method: "GET",
+      url: "/documents/document_acme_policy/download",
+      headers: { cookie: memberCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(download.statusCode).toBe(200);
+    expect(download.json().download).toMatchObject({
+      documentId: "document_acme_policy",
+      versionId,
+      originalFilename: "evidence.pdf",
+      mimeType: "application/pdf",
+      expiresInSeconds: 300
+    });
+    expect(download.json().download).not.toHaveProperty("storageKey");
+  });
+
+  it("keeps blocked files unavailable for download", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const memberCookie = await login(app, "member@acme.test");
+    const adminCookie = await login(app, "admin@acme.test");
+
+    const upload = await app.inject({
+      method: "POST",
+      url: "/documents/document_acme_policy/versions",
+      headers: { cookie: memberCookie, "x-tenant-id": "tenant_acme" },
+      payload: pdfUploadPayload()
+    });
+    const versionId = upload.json().version.id;
+
+    await app.inject({
+      method: "POST",
+      url: `/document-versions/${versionId}/scan-result`,
+      headers: { cookie: adminCookie, "x-tenant-id": "tenant_acme" },
+      payload: { scanStatus: "blocked" }
+    });
+
+    const download = await app.inject({
+      method: "GET",
+      url: "/documents/document_acme_policy/download",
+      headers: { cookie: memberCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(download.statusCode).toBe(409);
+    expect(download.json()).toEqual({ error: "file_not_available_until_clean_scan" });
+  });
 });
 
 async function login(app: ReturnType<typeof buildApp>, email: string): Promise<string> {
@@ -630,4 +781,15 @@ async function login(app: ReturnType<typeof buildApp>, email: string): Promise<s
   }
 
   return cookie;
+}
+
+function pdfUploadPayload() {
+  const content = Buffer.from([0x25, 0x50, 0x44, 0x46, 0x2d]);
+
+  return {
+    originalFilename: "evidence.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: content.byteLength,
+    contentBase64: content.toString("base64")
+  };
 }

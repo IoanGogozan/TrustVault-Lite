@@ -1,5 +1,6 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import { readBaseConfig } from "@trustvault/config";
+import { validateDocumentUpload } from "@trustvault/validation";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import {
   createSession,
@@ -545,6 +546,173 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     }
   );
 
+  app.post<{
+    Params: { documentId: string };
+    Body: {
+      originalFilename?: string;
+      mimeType?: string;
+      sizeBytes?: number;
+      contentBase64?: string;
+    };
+  }>("/documents/:documentId/versions", async (request, reply) => {
+    await requireTenantContext(store, request, reply);
+
+    if (!request.tenantContext) {
+      return;
+    }
+
+    const document =
+      (await documentRepository.findByIdForAuthorization?.(request.params.documentId)) ??
+      (await documentRepository.findVisibleById(
+        toDocumentReadScope(request.tenantContext),
+        request.params.documentId
+      ));
+
+    if (!document) {
+      return reply.code(404).send({ error: "document_not_found" });
+    }
+
+    const allowed = await requirePermission(store, request, reply, "documents:update", {
+      tenantId: document.tenantId,
+      projectId: document.projectId,
+      classification: document.classification,
+      entityType: "document",
+      entityId: document.id
+    });
+
+    if (!allowed) {
+      return;
+    }
+
+    const originalFilename = normalizeName(request.body.originalFilename);
+    const mimeType = request.body.mimeType;
+    const sizeBytes = request.body.sizeBytes;
+    const contentBase64 = request.body.contentBase64;
+
+    if (!originalFilename || !mimeType || typeof sizeBytes !== "number" || !contentBase64) {
+      return reply.code(400).send({ error: "upload_payload_required" });
+    }
+
+    const content = decodeBase64(contentBase64);
+
+    if (!content) {
+      return reply.code(400).send({ error: "invalid_file_content" });
+    }
+
+    const validation = validateDocumentUpload({
+      filename: originalFilename,
+      mimeType,
+      sizeBytes,
+      content
+    });
+
+    if (!validation.valid) {
+      return reply.code(400).send({ error: validation.reason });
+    }
+
+    const version = await documentRepository.uploadVersion({
+      tenantId: request.tenantContext.tenant.id,
+      documentId: document.id,
+      originalFilename,
+      mimeType,
+      content,
+      uploadedBy: request.tenantContext.user.id
+    });
+
+    return reply.code(201).send({ version: toDocumentVersionResponse(version) });
+  });
+
+  app.post<{
+    Params: { versionId: string };
+    Body: { scanStatus?: "clean" | "blocked" };
+  }>("/document-versions/:versionId/scan-result", async (request, reply) => {
+    await requireTenantContext(store, request, reply);
+
+    if (!request.tenantContext) {
+      return;
+    }
+
+    if (request.tenantContext.membership.role !== "owner" && request.tenantContext.membership.role !== "admin") {
+      return reply.code(403).send({ error: "permission_denied" });
+    }
+
+    const scanStatus = request.body.scanStatus;
+
+    if (scanStatus !== "clean" && scanStatus !== "blocked") {
+      return reply.code(400).send({ error: "invalid_scan_status" });
+    }
+
+    const version = await documentRepository.updateScanStatus(
+      toDocumentReadScope(request.tenantContext),
+      request.params.versionId,
+      scanStatus
+    );
+
+    if (!version) {
+      return reply.code(404).send({ error: "document_version_not_found" });
+    }
+
+    return { version: toDocumentVersionResponse(version) };
+  });
+
+  app.get<{ Params: { documentId: string } }>(
+    "/documents/:documentId/download",
+    async (request, reply) => {
+      await requireTenantContext(store, request, reply);
+
+      if (!request.tenantContext) {
+        return;
+      }
+
+      const document =
+        (await documentRepository.findByIdForAuthorization?.(request.params.documentId)) ??
+        (await documentRepository.findVisibleById(
+          toDocumentReadScope(request.tenantContext),
+          request.params.documentId
+        ));
+
+      if (!document) {
+        return reply.code(404).send({ error: "document_not_found" });
+      }
+
+      const allowed = await requirePermission(store, request, reply, "documents:read", {
+        tenantId: document.tenantId,
+        projectId: document.projectId,
+        classification: document.classification,
+        entityType: "document",
+        entityId: document.id
+      });
+
+      if (!allowed) {
+        return;
+      }
+
+      const version = await documentRepository.findCurrentVersionForDownload(
+        toDocumentReadScope(request.tenantContext),
+        document.id
+      );
+
+      if (!version) {
+        return reply.code(404).send({ error: "document_version_not_found" });
+      }
+
+      if (version.scanStatus !== "clean") {
+        return reply.code(409).send({ error: "file_not_available_until_clean_scan" });
+      }
+
+      return {
+        download: {
+          documentId: document.id,
+          versionId: version.id,
+          originalFilename: version.originalFilename,
+          mimeType: version.mimeType,
+          sizeBytes: version.sizeBytes,
+          expiresInSeconds: 300
+        }
+      };
+    }
+  );
+
   return app;
 }
 
@@ -658,6 +826,38 @@ function toDocumentResponse(document: {
     createdBy: document.createdBy,
     createdAt: document.createdAt.toISOString()
   };
+}
+
+function toDocumentVersionResponse(version: {
+  id: string;
+  documentId: string;
+  originalFilename: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+  scanStatus: string;
+  createdAt: Date;
+}) {
+  return {
+    id: version.id,
+    documentId: version.documentId,
+    originalFilename: version.originalFilename,
+    mimeType: version.mimeType,
+    sizeBytes: version.sizeBytes,
+    sha256: version.sha256,
+    scanStatus: version.scanStatus,
+    createdAt: version.createdAt.toISOString()
+  };
+}
+
+function decodeBase64(value: string): Buffer | undefined {
+  try {
+    const buffer = Buffer.from(value, "base64");
+
+    return buffer.byteLength > 0 ? buffer : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 function toDocumentReadScope(context: TenantRequestContext): DocumentReadScope {

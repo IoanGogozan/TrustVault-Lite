@@ -5,6 +5,7 @@ export type MembershipRole = "owner" | "admin" | "member" | "viewer" | "auditor"
 export type MembershipStatus = "active" | "invited" | "suspended";
 export type InvitationStatus = "pending" | "accepted" | "revoked";
 export type DocumentClassification = "public" | "internal" | "confidential" | "restricted";
+export type ScanStatus = "pending_scan" | "clean" | "blocked";
 
 export type User = {
   id: string;
@@ -56,6 +57,20 @@ export type Document = {
   createdAt: Date;
 };
 
+export type DocumentVersion = {
+  id: string;
+  tenantId: string;
+  documentId: string;
+  storageKey: string;
+  originalFilename: string;
+  mimeType: string;
+  sizeBytes: number;
+  sha256: string;
+  scanStatus: ScanStatus;
+  uploadedBy: string;
+  createdAt: Date;
+};
+
 export type Session = {
   id: string;
   userId: string;
@@ -82,6 +97,8 @@ export type AppStore = {
   memberships: Membership[];
   projects: Project[];
   documents: Document[];
+  documentVersions: DocumentVersion[];
+  storageObjects: Record<string, string>;
   invitations: Invitation[];
   auditEvents: AuditEvent[];
   sessions: Session[];
@@ -268,6 +285,35 @@ export function createDemoStore(): AppStore {
         createdAt: now
       }
     ],
+    documentVersions: [
+      {
+        id: "version_acme_policy_1",
+        tenantId: "tenant_acme",
+        documentId: "document_acme_policy",
+        storageKey: "tenant_acme/documents/security-policy.pdf",
+        originalFilename: "security-policy.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 5,
+        sha256: "seeded",
+        scanStatus: "clean",
+        uploadedBy: "user_owner_acme",
+        createdAt: now
+      },
+      {
+        id: "version_acme_restricted_1",
+        tenantId: "tenant_acme",
+        documentId: "document_acme_restricted",
+        storageKey: "tenant_acme/documents/restricted-board-report.pdf",
+        originalFilename: "restricted-board-report.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 5,
+        sha256: "seeded",
+        scanStatus: "clean",
+        uploadedBy: "user_owner_acme",
+        createdAt: now
+      }
+    ],
+    storageObjects: {},
     invitations: [],
     auditEvents: [],
     sessions: []

@@ -32,6 +32,9 @@ importers:
       '@trustvault/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@trustvault/validation':
+        specifier: workspace:*
+        version: link:../../packages/validation
       fastify:
         specifier: ^5.6.0
         version: 5.8.5
