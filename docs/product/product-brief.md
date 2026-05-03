@@ -1,31 +1,31 @@
 # Product Brief: TrustVault Lite
 
-## Problema
+## Problem
 
-Echipele mici au nevoie de un spatiu securizat unde pot centraliza documente confidentiale, dovezi de compliance, contracte si rapoarte fara sa expuna datele intre clienti sau roluri.
+Small teams need a secure workspace where they can centralize confidential documents, compliance evidence, contracts, and reports without exposing data across customers or roles.
 
-TrustVault Lite demonstreaza cum se construieste un mini SaaS multi-tenant cu securitate proiectata de la inceput.
+TrustVault Lite demonstrates how to build a small multi-tenant SaaS with security designed from day one.
 
-## Public tinta
+## Target Audience
 
-- Startup-uri B2B care pregatesc audituri sau due diligence.
-- Echipe mici de compliance, legal sau customer success.
-- Recruiteri si evaluatori tehnici care vor sa vada controale de securitate reale intr-un demo.
+- B2B startups preparing for audits or due diligence.
+- Small compliance, legal, and customer success teams.
+- Technical evaluators who want to see real security controls in a portfolio project.
 
-## Obiectiv portfolio
+## Portfolio Goal
 
-Proiectul trebuie sa arate maturitate tehnica prin combinatia dintre:
+The project should demonstrate technical maturity through the combination of:
 
-- aplicatie functionala;
+- working application;
 - threat model;
 - architecture diagram;
 - ASVS mapping;
-- teste de securitate;
+- security tests;
 - audit logs;
 - CI/CD security pipeline;
-- demo script clar.
+- clear demo script.
 
-## Functionalitati principale
+## Core Capabilities
 
 - Create organization.
 - Invite members.
@@ -35,26 +35,26 @@ Proiectul trebuie sa arate maturitate tehnica prin combinatia dintre:
 - File scan status.
 - Secure download.
 - Expiring share links.
-- RBAC si ABAC.
-- API keys cu scopes.
+- RBAC and ABAC.
+- Scoped API keys.
 - Audit log viewer.
 - Security dashboard.
-- Support access cu break-glass controlat si logat.
+- Support access with controlled and logged break-glass workflow.
 
-## Roluri
+## Roles
 
-| Rol | Permisiuni |
+| Role | Permissions |
 | --- | --- |
-| Owner | Gestioneaza tenant-ul, billing mock, security settings si membri |
-| Admin | Gestioneaza proiecte, documente, invitatii si audit |
-| Member | Upload/download pe proiectele unde are acces |
-| Viewer | Doar citire |
-| Auditor | Citire plus audit logs, fara modificari |
-| Support Operator | Rol intern, fara acces implicit la datele tenant-ului |
+| Owner | Manages the tenant, mock billing, security settings, and members |
+| Admin | Manages projects, documents, invitations, and audit visibility |
+| Member | Uploads and downloads documents in projects they can access |
+| Viewer | Read-only access |
+| Auditor | Read-only access plus audit logs, no changes |
+| Support Operator | Internal role with no default access to tenant data |
 
-## Principiu cheie
+## Key Principle
 
-Autentificarea spune cine este utilizatorul. Autorizarea decide ce poate face in tenant-ul curent.
+Authentication tells the system who the user is. Authorization decides what that user may do in the current tenant.
 
-Fiecare request trebuie sa treaca prin access control centralizat si sa fie deny-by-default.
+Every request must pass through centralized access control and default to deny.
 

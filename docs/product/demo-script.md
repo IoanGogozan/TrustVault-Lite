@@ -1,28 +1,28 @@
 # Demo Script
 
-Acesta este scenariul principal pentru portfolio sau interviu.
+This is the main portfolio or interview demo scenario.
 
 ## Flow
 
-1. Login ca Owner in tenant-ul `Acme Corp`.
-2. Arata ca tenant-ul cere MFA sau ca userul are MFA activ.
-3. Creeaza proiectul `SOC 2 Evidence`.
-4. Incarca un PDF.
-5. Arata statusul `pending_scan`, apoi `clean`.
-6. Invita un user cu rol `Viewer`.
-7. Login ca Viewer.
-8. Viewer-ul poate descarca documentul, dar nu poate face upload.
-9. Incearca manual accesarea unui document din alt tenant prin schimbarea ID-ului.
-10. API-ul returneaza `403`.
-11. Security dashboard afiseaza evenimentul `document.cross_tenant_denied`.
-12. Creeaza un API key cu scope `documents:read`.
-13. Incearca `DELETE /api/v1/documents/:id` cu acel key.
-14. API-ul returneaza `403`.
-15. Revoca cheia.
-16. Arata audit log-ul complet.
-17. Arata CI pipeline-ul cu security checks.
+1. Log in as Owner in the `Acme Corp` tenant.
+2. Show that the tenant requires MFA or that the user has MFA enabled.
+3. Create the `SOC 2 Evidence` project.
+4. Upload a PDF.
+5. Show the `pending_scan` status, then `clean`.
+6. Invite a user with the `Viewer` role.
+7. Log in as Viewer.
+8. Show that the Viewer can download the document but cannot upload.
+9. Try to access a document from another tenant by changing the ID manually.
+10. The API returns `403`.
+11. The security dashboard shows `document.cross_tenant_denied`.
+12. Create an API key with only the `documents:read` scope.
+13. Try `DELETE /api/v1/documents/:id` with that key.
+14. The API returns `403`.
+15. Revoke the key.
+16. Show the complete audit log.
+17. Show the CI pipeline with security checks.
 
-## Mesaj de prezentare
+## Presentation Message
 
-TrustVault Lite nu este prezentat ca produs certificat. Este un demo ASVS-inspired care arata controale verificabile pentru izolarea tenant-ilor, autorizare, upload securizat, auditabilitate si secure SDLC.
+TrustVault Lite is not presented as a certified product. It is an ASVS-inspired demo that shows verifiable controls for tenant isolation, authorization, secure upload handling, auditability, and secure SDLC.
 

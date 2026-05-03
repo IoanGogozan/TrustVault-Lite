@@ -1,18 +1,18 @@
 # Security Overview
 
-TrustVault Lite este proiectat ca demo SaaS securizat, cu controale vizibile si testabile.
+TrustVault Lite is designed as a secure SaaS demo with visible and testable controls.
 
-## Principii
+## Principles
 
 - Security by design.
 - Deny by default.
 - Least privilege.
-- Tenant isolation peste tot.
+- Tenant isolation everywhere.
 - Defense in depth.
-- Auditabilitate pentru actiuni sensibile.
-- Secure SDLC verificabil.
+- Auditability for sensitive actions.
+- Verifiable secure SDLC.
 
-## Documente
+## Documents
 
 - [Threat model](threat-model.md)
 - [Architecture](architecture.md)
@@ -22,17 +22,17 @@ TrustVault Lite este proiectat ca demo SaaS securizat, cu controale vizibile si 
 - [Incident response](incident-response.md)
 - [Secure SDLC](secure-sdlc.md)
 
-## Controale principale
+## Main Controls
 
 - OIDC Authorization Code Flow.
-- MFA/passkeys prin identity provider.
+- MFA/passkeys through identity provider.
 - HttpOnly Secure SameSite cookies.
-- RBAC/ABAC centralizat.
+- Centralized RBAC/ABAC.
 - PostgreSQL RLS.
-- Upload validation si scanare.
+- Upload validation and scanning.
 - Private object storage.
-- Signed URLs expirabile.
-- API keys hash-uite cu scopes.
+- Expiring signed URLs.
+- Hashed API keys with scopes.
 - Rate limiting.
 - Audit events.
 - Security headers.

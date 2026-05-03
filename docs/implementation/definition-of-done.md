@@ -1,30 +1,30 @@
 # Definition of Done
 
-Aplicatia este gata pentru portfolio cand raspunsurile de mai jos sunt demonstrabile in aplicatie, teste si documentatie.
+The application is portfolio-ready when the answers below are demonstrable in the app, tests, and documentation.
 
-| Intrebare | Raspuns demonstrabil |
+| Question | Demonstrable Answer |
 | --- | --- |
-| Cum izolezi tenant-ii? | `tenant_id`, RLS, teste cross-tenant |
-| Cum previi IDOR/BOLA? | object-level authorization + negative tests |
-| Cum controlezi rolurile? | RBAC/ABAC centralizat |
-| Cum protejezi fisierele? | private storage, validation, scan, signed URLs |
-| Cum gestionezi sesiunile? | secure cookies, revoke, active sessions |
-| Cum detectezi evenimente suspecte? | audit logs + security dashboard |
-| Cum e securizat API-ul? | scoped API keys, rate limits, no mass assignment |
-| Cum demonstrezi secure SDLC? | docs, threat model, CI security scans |
-| Cum e verificabil? | teste automate + security report |
+| How are tenants isolated? | `tenant_id`, RLS, cross-tenant tests |
+| How is IDOR/BOLA prevented? | Object-level authorization plus negative tests |
+| How are roles controlled? | Centralized RBAC/ABAC |
+| How are files protected? | Private storage, validation, scanning, signed URLs |
+| How are sessions managed? | Secure cookies, revocation, active sessions |
+| How are suspicious events detected? | Audit logs plus security dashboard |
+| How is the API secured? | Scoped API keys, rate limits, no mass assignment |
+| How is secure SDLC demonstrated? | Docs, threat model, CI security scans |
+| How is it verifiable? | Automated tests plus security report |
 
-## Ce trebuie evitat
+## Avoid
 
 - JWT in localStorage.
-- Verificari de rol doar in frontend.
-- Endpoint-uri fara tenant check.
-- `findById(id)` fara `tenant_id`.
-- Upload public direct in bucket.
-- API responses care returneaza obiecte intregi fara allowlist.
-- Token-uri/API keys in logs.
-- Parole sau reset tokens in plaintext.
-- CORS wildcard.
-- Lipsa testelor negative.
-- README care spune doar "secure app" fara evidence.
+- Role checks only in the frontend.
+- Endpoints without tenant checks.
+- `findById(id)` without tenant context.
+- Public direct uploads to object storage.
+- API responses that return full objects without an allowlist.
+- Tokens or API keys in logs.
+- Passwords or reset tokens in plaintext.
+- Wildcard CORS.
+- Missing negative tests.
+- README claims like "secure app" without evidence.
 

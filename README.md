@@ -1,34 +1,34 @@
 # TrustVault Lite
 
-TrustVault Lite este un demo SaaS B2B multi-tenant pentru portfolio, construit ca un "secure client evidence portal" pentru documente, dovezi de compliance, contracte si fisiere confidentiale.
+TrustVault Lite is a B2B multi-tenant SaaS portfolio demo built as a secure client evidence portal for confidential documents, compliance evidence, contracts, and reports.
 
-Scopul proiectului este sa demonstreze controale reale de securitate aplicate intr-un produs mic, nu sa pretinda certificare sau conformitate formala.
+The goal is to demonstrate real security controls in a small product. This project does not claim certification or formal compliance.
 
-## Pozitionare
+## Positioning
 
-**ASVS-inspired secure SaaS demo, focused on tenant isolation, authorization, secure file handling, auditability and secure SDLC.**
+**ASVS-inspired secure SaaS demo, focused on tenant isolation, authorization, secure file handling, auditability, and secure SDLC.**
 
-TrustVault Lite este inspirat de:
+TrustVault Lite is inspired by:
 
-- OWASP ASVS pentru cerinte de verificare securizata.
-- OWASP API Security Top 10 pentru riscuri precum BOLA si BOPLA.
-- OWASP File Upload Cheat Sheet pentru upload securizat.
-- NIST Digital Identity Guidelines pentru principii de identitate digitala.
-- OWASP SAMM pentru secure SDLC simplificat.
+- OWASP ASVS for secure verification requirements.
+- OWASP API Security Top 10 for risks such as BOLA and BOPLA.
+- OWASP File Upload Cheat Sheet for secure upload handling.
+- NIST Digital Identity Guidelines for digital identity principles.
+- OWASP SAMM for a simplified secure SDLC.
 
-## Functionalitati tinta
+## Target Features
 
-- Organizatii multi-tenant cu `tenant_id` peste tot.
-- RBAC si ABAC centralizat prin policy layer.
-- PostgreSQL Row Level Security ca defense in depth.
-- Upload securizat de fisiere cu validare, scanare si storage privat.
-- Link-uri de download semnate, expirabile si auditabile.
-- API keys hash-uite, cu scopes, expirare si revocare.
-- Audit logs si security dashboard.
-- Sesiuni securizate, MFA/passkeys prin identity provider.
-- CI/CD cu lint, teste, dependency scan, secret scan, SAST, container scan si ZAP baseline.
+- Multi-tenant organizations with `tenant_id` on business data.
+- Centralized RBAC and ABAC policy layer.
+- PostgreSQL Row Level Security as defense in depth.
+- Secure file uploads with validation, scanning, and private storage.
+- Short-lived signed download URLs.
+- Hashed API keys with scopes, expiry, and revocation.
+- Audit logs and security dashboard.
+- Secure sessions and MFA/passkeys through an identity provider.
+- CI/CD with linting, tests, dependency scanning, secret scanning, SAST, container scanning, and ZAP baseline.
 
-## Documentatie
+## Documentation
 
 - [Product brief](docs/product/product-brief.md)
 - [Demo script](docs/product/demo-script.md)
@@ -44,7 +44,7 @@ TrustVault Lite este inspirat de:
 - [Incident response](docs/security/incident-response.md)
 - [Secure SDLC](docs/security/secure-sdlc.md)
 
-## Structura repo propusa
+## Proposed Repository Structure
 
 ```text
 trustvault-lite/
@@ -68,35 +68,35 @@ trustvault-lite/
     workflows/
 ```
 
-## Faze MVP
+## MVP Phases
 
-1. SaaS foundation: auth, tenant-uri, memberships, invite-uri.
-2. Document vault: proiecte, upload, scan status, download securizat.
-3. Authorization hardening: policy layer, teste negative, field-level filtering.
-4. Security dashboard: audit logs, API keys, sesiuni, MFA status, share links.
-5. DevSecOps: pipeline de securitate si rapoarte verificabile.
+1. SaaS foundation: auth, tenants, memberships, invitations.
+2. Document vault: projects, upload, scan status, secure download.
+3. Authorization hardening: policy layer, negative tests, field-level filtering.
+4. Security dashboard: audit logs, API keys, sessions, MFA status, share links.
+5. DevSecOps: security pipeline and verifiable reports.
 
 ## Security Controls Matrix
 
-| Arie | Control | Implementat prin | Testabil prin |
+| Area | Control | Implemented Through | Testable Through |
 | --- | --- | --- | --- |
 | Auth | MFA / passkeys | Identity provider | Login flow |
 | Sessions | Secure cookies | BFF/session config | Header tests |
 | Authorization | RBAC + ABAC | `can()` policy layer | Role tests |
 | Tenant isolation | RLS + `tenant_id` | PostgreSQL policies | Cross-tenant tests |
 | API Security | Scoped API keys | Hash + scopes + expiry | API integration tests |
-| File Security | Validation + scan | Upload worker | Upload tests |
+| File Security | Validation + scanning | Upload worker | Upload tests |
 | Data Protection | Private storage | Signed URLs | Download tests |
 | Auditability | Audit events | Audit service | Audit assertions |
 | Browser Security | CSP + headers | Middleware | Header tests |
 | DevSecOps | Security scans in CI | GitHub Actions | Pipeline artifacts |
-| Secrets | No secrets in repo | Secret scan | CI secret scanning |
+| Secrets | No secrets in repo | Secret scanning | CI secret scan |
 | Incident Response | Playbooks | Docs | Manual review |
 
-## Limitari asumate
+## Assumed Limitations
 
-- Proiectul este demo de portfolio, nu produs certificat.
-- Malware scanning poate porni cu mock documentat si trece ulterior la ClamAV.
-- Billing este mock.
-- Identity provider-ul poate fi local pentru demo, dar integrarea trebuie sa respecte OIDC Authorization Code Flow.
+- This is a portfolio demo, not a certified product.
+- Malware scanning may start with a documented mock and later move to ClamAV.
+- Billing is mocked.
+- The identity provider may run locally for demo purposes, but the integration should follow OIDC Authorization Code Flow.
 

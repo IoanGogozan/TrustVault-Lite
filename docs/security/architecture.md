@@ -2,7 +2,7 @@
 
 ## Context
 
-TrustVault Lite este un SaaS B2B multi-tenant format din frontend, API, worker, PostgreSQL, Redis, object storage si identity provider.
+TrustVault Lite is a B2B multi-tenant SaaS made of a frontend, API, worker, PostgreSQL, Redis, object storage, and identity provider.
 
 ## Component Diagram
 
@@ -82,16 +82,16 @@ sequenceDiagram
 
 ## Download Flow
 
-1. Actor cere download.
-2. API autentifica actorul.
-3. API verifica tenant, rol, proiect si scan status.
-4. API refuza fisierele care nu sunt `clean`.
-5. API creeaza signed URL scurt si expirabil.
-6. API logheaza audit event.
+1. Actor requests download.
+2. API authenticates the actor.
+3. API verifies tenant, role, project, and scan status.
+4. API refuses files that are not `clean`.
+5. API creates a short-lived signed URL.
+6. API writes an audit event.
 
 ## Data Model
 
-Tabele principale:
+Main tables:
 
 - `users`
 - `tenants`
@@ -106,7 +106,7 @@ Tabele principale:
 
 ## Browser Hardening
 
-Header-ele minime:
+Minimum headers:
 
 - `Content-Security-Policy`
 - `Strict-Transport-Security`

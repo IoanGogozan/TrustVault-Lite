@@ -1,32 +1,32 @@
 # Implementation Plan
 
-## Principii de implementare
+## Implementation Principles
 
-- Construim incremental, pe faze verificabile.
-- Fiecare endpoint este autentificat implicit.
-- Fiecare query business este tenant-scoped.
-- Autorizarea este centralizata in policy layer.
-- PostgreSQL RLS este defense in depth, nu inlocuitor pentru verificarea din cod.
-- Testele negative sunt obligatorii pentru cross-tenant access si roluri.
-- Nu logam parole, token-uri, API keys, fisiere brute sau PII inutil.
+- Build incrementally through verifiable phases.
+- Every endpoint is authenticated by default.
+- Every business query is tenant-scoped.
+- Authorization is centralized in the policy layer.
+- PostgreSQL RLS is defense in depth, not a replacement for code-level authorization.
+- Negative tests are required for cross-tenant access and role boundaries.
+- Do not log passwords, tokens, API keys, raw files, or unnecessary PII.
 
-## Stack recomandat
+## Recommended Stack
 
-| Componenta | Alegere |
+| Component | Choice |
 | --- | --- |
 | Frontend | Next.js / React + TypeScript |
-| Backend | NestJS sau Fastify cu TypeScript |
+| Backend | NestJS or Fastify with TypeScript |
 | Database | PostgreSQL |
-| Multi-tenancy | `tenant_id` peste tot + PostgreSQL RLS |
-| Auth | OIDC provider sau Auth.js |
+| Multi-tenancy | `tenant_id` everywhere plus PostgreSQL RLS |
+| Auth | OIDC provider or Auth.js |
 | Sessions | HttpOnly Secure SameSite cookies |
-| Storage fisiere | S3-compatible storage, MinIO local |
+| File storage | S3-compatible storage, local MinIO |
 | Queue | Redis + BullMQ |
-| Malware scan | ClamAV container sau mock documentat |
+| Malware scan | ClamAV container or documented mock |
 | Rate limiting | Redis-based |
 | CI/CD | GitHub Actions |
 
-## Faza 0: Repo si documentatie initiala
+## Phase 0: Repository and Initial Documentation
 
 Deliverables:
 
@@ -40,43 +40,43 @@ Deliverables:
 - `packages/validation`;
 - `packages/config`;
 - `docs/security`;
-- threat model initial;
+- initial threat model;
 - architecture diagram;
 - security README.
 
-## Faza 1: Auth si tenant model
+## Phase 1: Auth and Tenant Model
 
-Task-uri:
+Tasks:
 
-- Configureaza OIDC/Auth provider.
-- Creeaza modelul `users`.
-- Creeaza modelul `tenants`.
-- Creeaza modelul `memberships`.
-- Implementeaza tenant switcher.
-- Creeaza middleware de autentificare.
-- Creeaza middleware de tenant context.
-- Configureaza session cookies securizate.
-- Adauga logout si session revoke.
+- Configure OIDC/Auth provider.
+- Create the `users` model.
+- Create the `tenants` model.
+- Create the `memberships` model.
+- Implement tenant switcher.
+- Create authentication middleware.
+- Create tenant context middleware.
+- Configure secure session cookies.
+- Add logout and session revocation.
 
-Teste:
+Tests:
 
-- user neautentificat primeste `401`;
-- user fara membership primeste `403`;
-- user nu poate selecta tenant strain;
-- session cookie are `HttpOnly`, `Secure`, `SameSite`.
+- unauthenticated user receives `401`;
+- user without membership receives `403`;
+- user cannot select a foreign tenant;
+- session cookie has `HttpOnly`, `Secure`, `SameSite`.
 
-## Faza 2: RBAC si policy layer
+## Phase 2: RBAC and Policy Layer
 
-Task-uri:
+Tasks:
 
-- Defineste permissions.
-- Creeaza rolurile.
-- Creeaza functia `can()`.
-- Creeaza guard/middleware pentru endpoint-uri.
-- Creeaza helper `requirePermission("document:read")`.
-- Creeaza audit event pentru `authorization.denied`.
+- Define permissions.
+- Create roles.
+- Create the `can()` function.
+- Create guards/middleware for endpoints.
+- Create `requirePermission("document:read")`.
+- Create audit event for `authorization.denied`.
 
-Permisiuni initiale:
+Initial permissions:
 
 ```ts
 export const permissions = {
@@ -111,25 +111,25 @@ export const permissions = {
 } as const;
 ```
 
-Teste:
+Tests:
 
-- viewer nu poate upload;
-- member nu poate schimba roluri;
-- admin nu poate modifica owner;
-- auditor nu poate crea documente;
-- orice permisiune lipsa duce la deny.
+- viewer cannot upload;
+- member cannot change roles;
+- admin cannot modify owner;
+- auditor cannot create documents;
+- missing permission results in deny.
 
-## Faza 3: PostgreSQL RLS
+## Phase 3: PostgreSQL RLS
 
-Task-uri:
+Tasks:
 
-- Adauga `tenant_id` pe toate tabelele business.
-- Activeaza RLS.
-- Creeaza policies.
-- Seteaza `app.current_tenant_id` per request/transaction.
-- Creeaza teste de integrare pentru cross-tenant leakage.
+- Add `tenant_id` to all business tables.
+- Enable RLS.
+- Create policies.
+- Set `app.current_tenant_id` per request/transaction.
+- Add integration tests for cross-tenant leakage.
 
-Exemplu:
+Example:
 
 ```sql
 ALTER TABLE documents ENABLE ROW LEVEL SECURITY;
@@ -141,43 +141,43 @@ USING (
 );
 ```
 
-## Faza 4: Document vault si upload pipeline
+## Phase 4: Document Vault and Upload Pipeline
 
-Task-uri:
+Tasks:
 
-- Creeaza `projects`.
-- Creeaza upload endpoint.
-- Valideaza extensie, MIME si size.
-- Calculeaza SHA-256.
-- Salveaza fisierul in storage privat.
-- Creeaza scan job.
-- Marcheaza documentul `pending_scan`.
-- Worker-ul marcheaza `clean` sau `blocked`.
-- Permite download doar pentru fisiere `clean`.
+- Create `projects`.
+- Create upload endpoint.
+- Validate extension, MIME, and size.
+- Calculate SHA-256.
+- Store file in private storage.
+- Create scan job.
+- Mark document as `pending_scan`.
+- Worker marks the file as `clean` or `blocked`.
+- Allow download only for `clean` files.
 
-## Faza 5: Share links
+## Phase 5: Share Links
 
-Task-uri:
+Tasks:
 
-- Creeaza link-uri expirabile.
-- Salveaza tokenul hash-uit.
-- Adauga `max_downloads`.
-- Permite revocarea.
-- Logheaza fiecare acces.
-- Nu expune storage path.
+- Create expiring links.
+- Store token as a hash.
+- Add `max_downloads`.
+- Allow revocation.
+- Log each access.
+- Do not expose storage path.
 
-## Faza 6: API keys si external API
+## Phase 6: API Keys and External API
 
-Task-uri:
+Tasks:
 
-- Genereaza API keys cu prefix.
-- Afiseaza cheia completa o singura data.
-- Salveaza doar hash.
-- Adauga scopes.
-- Adauga expiry.
-- Adauga revoke.
-- Adauga rate limits.
-- Adauga OpenAPI spec.
+- Generate API keys with prefix.
+- Display the full key only once.
+- Store only a hash.
+- Add scopes.
+- Add expiry.
+- Add revoke.
+- Add rate limits.
+- Add OpenAPI spec.
 
 Format:
 
@@ -185,19 +185,19 @@ Format:
 tv_live_7f3a9c_xxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
-## Faza 7: Audit logs si security dashboard
+## Phase 7: Audit Logs and Security Dashboard
 
-Task-uri:
+Tasks:
 
-- Creeaza audit event service.
-- Creeaza audit viewer.
-- Creeaza filtre dupa actor, action si result.
-- Creeaza security events dashboard.
-- Creeaza alert rules simple.
+- Create audit event service.
+- Create audit viewer.
+- Create filters by actor, action, and result.
+- Create security events dashboard.
+- Create simple alert rules.
 
-## Faza 8: Hardening frontend/backend
+## Phase 8: Frontend/Backend Hardening
 
-Task-uri:
+Tasks:
 
 - CSP.
 - Security headers.
@@ -206,11 +206,11 @@ Task-uri:
 - Request body limits.
 - Input validation.
 - Output encoding.
-- Error handling fara stack traces in production.
-- Structured logs cu redactare.
-- Config validation la startup.
+- Error handling without stack traces in production.
+- Structured logs with redaction.
+- Config validation at startup.
 
-## Faza 9: CI/CD security
+## Phase 9: CI/CD Security
 
 Pipeline:
 
@@ -227,9 +227,9 @@ Pipeline:
 11. OWASP ZAP baseline
 12. generate security report artifact
 
-## Faza 10: Portfolio polish
+## Phase 10: Portfolio Polish
 
-- demo video scurt;
+- short demo video;
 - screenshots;
 - architecture diagram;
 - security controls matrix;
@@ -238,5 +238,5 @@ Pipeline:
 - `make demo`;
 - `make test-security`;
 - `make zap-scan`;
-- README public bine structurat.
+- well-structured public README.
 

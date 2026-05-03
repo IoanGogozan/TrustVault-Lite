@@ -2,54 +2,54 @@
 
 ## MVP 1: SaaS Foundation
 
-- Landing page simplu.
-- Register/login prin OIDC sau Auth.js.
+- Simple landing page.
+- Register/login through OIDC or Auth.js.
 - Create organization.
 - Tenant switcher.
 - Invite user by email.
 - Accept invite.
-- Roluri: Owner, Admin, Member, Viewer, Auditor.
-- Dashboard tenant.
+- Roles: Owner, Admin, Member, Viewer, Auditor.
+- Tenant dashboard.
 
 Security focus:
 
-- userul nu poate vedea tenant-uri unde nu este membru;
-- toate query-urile sunt tenant-scoped;
-- toate endpoint-urile cer auth;
+- users cannot see tenants where they are not members;
+- all queries are tenant-scoped;
+- all endpoints require authentication;
 - deny by default.
 
 ## MVP 2: Document Vault
 
 - Projects.
 - Upload document.
-- File versioning simplu.
-- Download securizat.
-- Delete soft.
+- Simple file versioning.
+- Secure download.
+- Soft delete.
 - File scan status.
-- Audit events pentru upload/download/delete.
+- Audit events for upload/download/delete.
 
 Security focus:
 
-- fisiere private;
-- signed URLs expirabile;
+- private files;
+- expiring signed URLs;
 - file validation;
-- scan inainte de download;
-- documentele nu pot fi accesate cross-tenant.
+- scan before download;
+- documents cannot be accessed cross-tenant.
 
 ## MVP 3: Authorization Hardening
 
-- Policy layer centralizat.
-- Tests pentru fiecare rol.
-- Tests pentru cross-tenant access.
-- Tests pentru API object ID manipulation.
+- Centralized policy layer.
+- Tests for each role.
+- Tests for cross-tenant access.
+- Tests for API object ID manipulation.
 - Field-level response filtering.
 
 Security focus:
 
-- prevenire IDOR/BOLA;
-- prevenire mass assignment;
-- nu returnam campuri sensibile accidental;
-- fiecare access denied intra in audit log.
+- prevent IDOR/BOLA;
+- prevent mass assignment;
+- avoid accidental exposure of sensitive fields;
+- every access denied event is written to the audit log.
 
 ## MVP 4: Security Dashboard
 
@@ -62,15 +62,15 @@ Security focus:
 
 Security focus:
 
-- vizibilitate;
-- trasabilitate;
-- revocare rapida;
-- evidence pentru controale.
+- visibility;
+- traceability;
+- fast revocation;
+- evidence for security controls.
 
 ## MVP 5: DevSecOps
 
 - GitHub Actions.
-- Lint si tests.
+- Lint and tests.
 - Dependency scan.
 - Secret scanning.
 - SAST.
@@ -81,5 +81,5 @@ Security focus:
 
 Security focus:
 
-- securitatea este parte din proces, nu doar cod.
+- security is part of the process, not only the code.
 

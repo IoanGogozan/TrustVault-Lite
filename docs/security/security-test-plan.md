@@ -2,52 +2,52 @@
 
 ## Unit Tests
 
-- `can()` permite doar actiuni definite explicit.
-- `can()` este deny-by-default.
-- wildcard permissions functioneaza doar pentru aria corecta.
-- response DTO nu include campuri sensibile.
-- API key hash/verify functioneaza fara a expune cheia.
+- `can()` allows only explicitly defined actions.
+- `can()` denies by default.
+- wildcard permissions work only for the correct area.
+- response DTO does not include sensitive fields.
+- API key hash/verify works without exposing the key.
 
 ## Integration Tests
 
-- user neautentificat primeste `401`.
-- user fara membership primeste `403`.
-- user nu poate selecta tenant strain.
-- document ID din alt tenant returneaza `403` sau `404`.
-- query fara tenant context esueaza.
-- API key din tenant A nu acceseaza tenant B.
-- viewer nu poate upload.
-- auditor nu poate crea documente.
-- admin nu poate modifica owner.
+- unauthenticated user receives `401`.
+- user without membership receives `403`.
+- user cannot select a foreign tenant.
+- document ID from another tenant returns `403` or `404`.
+- query without tenant context fails.
+- API key from tenant A cannot access tenant B.
+- viewer cannot upload.
+- auditor cannot create documents.
+- admin cannot modify owner.
 
 ## File Upload Tests
 
-- fisier prea mare este respins.
-- extensie nepermisa este respinsa.
-- MIME mismatch este respins.
-- fisier `pending_scan` nu poate fi descarcat.
-- fisier `blocked` nu poate fi descarcat.
-- storage key nu este expus in API response.
-- download link expira.
+- file that is too large is rejected.
+- forbidden extension is rejected.
+- MIME mismatch is rejected.
+- `pending_scan` file cannot be downloaded.
+- `blocked` file cannot be downloaded.
+- storage key is not exposed in API response.
+- download link expires.
 
 ## API Security Tests
 
-- cheie fara `documents:write` nu poate crea document.
-- cheie revocata nu functioneaza.
-- cheie expirata nu functioneaza.
-- rate limiting se aplica pe tenant, key si IP.
-- request body cu campuri extra nu modifica proprietati interzise.
-- cheia completa nu apare in logs.
+- key without `documents:write` cannot create documents.
+- revoked key does not work.
+- expired key does not work.
+- rate limiting applies by tenant, key, and IP.
+- request body with extra fields cannot modify forbidden properties.
+- full key does not appear in logs.
 
 ## Browser/HTTP Tests
 
-- CSP este prezent.
-- HSTS este prezent in production.
-- `X-Content-Type-Options: nosniff` este prezent.
-- `X-Frame-Options: DENY` este prezent.
-- CORS blocheaza origin necunoscut.
-- mutating request fara CSRF token este blocat.
-- erorile nu expun stack trace in production.
+- CSP is present.
+- HSTS is present in production.
+- `X-Content-Type-Options: nosniff` is present.
+- `X-Frame-Options: DENY` is present.
+- CORS blocks unknown origin.
+- mutating request without CSRF token is blocked.
+- errors do not expose stack traces in production.
 
 ## CI Security Checks
 

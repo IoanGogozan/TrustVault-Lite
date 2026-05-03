@@ -1,8 +1,8 @@
 # Incident Response
 
-Acest document defineste playbook-uri simple pentru demo.
+This document defines simple playbooks for the demo.
 
-## Principii
+## Principles
 
 - Contain first.
 - Preserve audit evidence.
@@ -10,37 +10,37 @@ Acest document defineste playbook-uri simple pentru demo.
 - Communicate scope and timeline.
 - Document follow-up controls.
 
-## Cont compromis
+## Compromised Account
 
-1. Revoca sesiunile active ale userului.
-2. Forteaza resetarea credentialelor la identity provider.
-3. Verifica audit logs pentru actiuni recente.
-4. Revoca API keys create sau folosite suspect.
-5. Marcheaza evenimentul ca high-risk.
-6. Creeaza follow-up pentru MFA enforcement daca lipsea.
+1. Revoke the user's active sessions.
+2. Force credential reset at the identity provider.
+3. Review audit logs for recent actions.
+4. Revoke API keys created or used suspiciously.
+5. Mark the event as high-risk.
+6. Create follow-up work for MFA enforcement if it was missing.
 
-## API key compromis
+## Compromised API Key
 
-1. Revoca cheia.
-2. Cauta `key_prefix` in audit logs.
-3. Identifica actiunile efectuate.
-4. Creeaza cheie noua cu scopes minime.
-5. Verifica daca cheia a aparut in logs sau repo.
-6. Ruleaza secret scan.
+1. Revoke the key.
+2. Search audit logs by `key_prefix`.
+3. Identify actions performed with the key.
+4. Create a new key with minimum scopes.
+5. Check whether the key appeared in logs or the repository.
+6. Run secret scanning.
 
-## Document leak suspectat
+## Suspected Document Leak
 
-1. Revoca share links active pentru document.
-2. Verifica audit logs pentru download-uri.
-3. Verifica tenant membership si schimbari de rol.
-4. Verifica daca documentul a fost accesat prin API key.
-5. Marcheaza documentul pentru review.
+1. Revoke active share links for the document.
+2. Review audit logs for downloads.
+3. Review tenant membership and role changes.
+4. Check whether the document was accessed through an API key.
+5. Mark the document for review.
 
-## Support access misuse
+## Support Access Misuse
 
-1. Revoca support access activ.
-2. Verifica motivul, aprobarea si expirarea.
-3. Cauta toate actiunile `support.*`.
-4. Notifica Owner-ul tenant-ului in demo flow.
-5. Creeaza remediere pentru policy sau approval workflow.
+1. Revoke active support access.
+2. Review reason, approval, and expiry.
+3. Search all `support.*` actions.
+4. Notify the tenant Owner in the demo flow.
+5. Create remediation for policy or approval workflow gaps.
 
