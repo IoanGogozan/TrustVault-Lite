@@ -216,13 +216,26 @@ tv_live_7f3a9c_xxxxxxxxxxxxxxxxxxxxxxxxx
 
 ## Phase 7: Audit Logs and Security Dashboard
 
-Tasks:
+Status: implemented for the current demo scope.
 
-- Create audit event service.
+Completed:
+
+- Create audit event filtering.
 - Create audit viewer.
 - Create filters by actor, action, and result.
 - Create security events dashboard.
 - Create simple alert rules.
+- Show MFA coverage, denied access, file scan status, active API keys, active share links, and risky events in the web UI.
+
+Implementation note:
+
+- Details are documented in `docs/implementation/phase-7-audit-security-dashboard.md`.
+
+Remaining hardening:
+
+- Extract a dedicated audit query service for PostgreSQL-backed audit queries.
+- Add persisted alert acknowledgements.
+- Add time-windowed dashboard metrics.
 
 ## Phase 8: Frontend/Backend Hardening
 

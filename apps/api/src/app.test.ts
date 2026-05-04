@@ -1481,6 +1481,137 @@ describe("phase 1 auth and tenant foundation", () => {
     expect(expiredUse.statusCode).toBe(401);
     expect(expiredUse.json()).toEqual({ error: "api_key_expired" });
   });
+
+  it("filters audit events by actor action and result", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const ownerCookie = await login(app, "owner@acme.test");
+    const viewerCookie = await login(app, "viewer@acme.test");
+
+    await app.inject({
+      method: "POST",
+      url: "/documents",
+      headers: { cookie: viewerCookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        title: "Denied Viewer Document",
+        projectId: "project_acme_soc2",
+        classification: "confidential"
+      }
+    });
+    await app.inject({
+      method: "POST",
+      url: "/api-keys",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        name: "Dashboard Integration",
+        scopes: ["documents:read"]
+      }
+    });
+
+    const filtered = await app.inject({
+      method: "GET",
+      url: "/audit-events?actorType=user&action=authorization.denied&result=failure&limit=5",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(filtered.statusCode).toBe(200);
+    expect(filtered.json().auditEvents).toHaveLength(1);
+    expect(filtered.json().auditEvents[0]).toMatchObject({
+      actorType: "user",
+      action: "authorization.denied",
+      result: "failure"
+    });
+    expect(JSON.stringify(filtered.json())).not.toContain("Dashboard Integration");
+  });
+
+  it("returns security dashboard metrics alerts and risky events", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const ownerCookie = await login(app, "owner@acme.test");
+    const viewerCookie = await login(app, "viewer@acme.test");
+
+    await app.inject({
+      method: "POST",
+      url: "/documents",
+      headers: { cookie: viewerCookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        title: "Denied Viewer Document",
+        projectId: "project_acme_soc2",
+        classification: "confidential"
+      }
+    });
+    await app.inject({
+      method: "POST",
+      url: "/share-links",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        documentId: "document_acme_policy",
+        expiresInMinutes: 60
+      }
+    });
+    await app.inject({
+      method: "POST",
+      url: "/api-keys",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        name: "Dashboard Integration",
+        scopes: ["documents:read"]
+      }
+    });
+
+    const dashboard = await app.inject({
+      method: "GET",
+      url: "/security-dashboard",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(dashboard.statusCode).toBe(200);
+    expect(dashboard.json().metrics).toMatchObject({
+      activeMembers: 5,
+      mfaRequiredMembers: 5,
+      accessDeniedEvents: 1,
+      cleanFiles: 2,
+      activeApiKeys: 1,
+      activeShareLinks: 1
+    });
+    expect(dashboard.json().alerts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "access-denied-events",
+          severity: "medium",
+          status: "attention"
+        })
+      ])
+    );
+    expect(dashboard.json().riskyEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ action: "authorization.denied" }),
+        expect.objectContaining({ action: "api_key.created" }),
+        expect.objectContaining({ action: "share_link.created" })
+      ])
+    );
+  });
+
+  it("denies security dashboard access without security read permission", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const memberCookie = await login(app, "member@acme.test");
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/security-dashboard",
+      headers: { cookie: memberCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(store.auditEvents.at(-1)).toMatchObject({
+      action: "authorization.denied",
+      entityType: "security_dashboard",
+      metadata: expect.objectContaining({
+        requestedAction: "security:read"
+      })
+    });
+  });
 });
 
 async function login(app: ReturnType<typeof buildApp>, email: string): Promise<string> {

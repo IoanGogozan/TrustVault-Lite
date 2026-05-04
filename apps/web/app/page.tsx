@@ -2,6 +2,7 @@
 
 import {
   Activity,
+  AlertTriangle,
   Building2,
   CheckCircle2,
   FileUp,
@@ -12,8 +13,7 @@ import {
   LockKeyhole,
   LogOut,
   Play,
-  ShieldCheck,
-  UserRound
+  ShieldCheck
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 
@@ -61,7 +61,31 @@ type AuditEvent = {
   entityId?: string;
   actorType: string;
   result: "success" | "failure";
+  metadata?: Record<string, unknown>;
   createdAt: string;
+};
+
+type SecurityAlert = {
+  id: string;
+  severity: "info" | "low" | "medium" | "high";
+  title: string;
+  status: "clear" | "monitor" | "attention";
+};
+
+type SecurityDashboard = {
+  metrics: {
+    mfaRequiredMembers: number;
+    activeMembers: number;
+    accessDeniedEvents: number;
+    cleanFiles: number;
+    pendingFiles: number;
+    blockedFiles: number;
+    activeApiKeys: number;
+    activeShareLinks: number;
+    riskyEvents: number;
+  };
+  alerts: SecurityAlert[];
+  riskyEvents: AuditEvent[];
 };
 
 type ShareLink = {
@@ -104,13 +128,6 @@ type DownloadMetadata = {
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 
-const securitySignals = [
-  { label: "Session", value: "HttpOnly", icon: LockKeyhole },
-  { label: "Tenant", value: "Scoped", icon: Building2 },
-  { label: "Files", value: "Private", icon: ShieldCheck },
-  { label: "Audit", value: "Live", icon: Activity }
-];
-
 export default function Home() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | undefined>();
   const [selectedTenantId, setSelectedTenantId] = useState<string | undefined>();
@@ -126,6 +143,7 @@ export default function Home() {
   const [shareLinks, setShareLinks] = useState<ShareLink[]>([]);
   const [apiKeys, setApiKeys] = useState<ApiKeyRecord[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [securityDashboard, setSecurityDashboard] = useState<SecurityDashboard | undefined>();
   const [downloadMetadata, setDownloadMetadata] = useState<DownloadMetadata | undefined>();
   const [lastShareToken, setLastShareToken] = useState<string | undefined>();
   const [lastApiKey, setLastApiKey] = useState<string | undefined>();
@@ -143,6 +161,9 @@ export default function Home() {
       setProjects([]);
       setDocuments([]);
       setAuditEvents([]);
+      setShareLinks([]);
+      setApiKeys([]);
+      setSecurityDashboard(undefined);
       return;
     }
 
@@ -174,13 +195,20 @@ export default function Home() {
   }
 
   async function refreshWorkspace(tenantId: string) {
-    const [projectResponse, documentResponse, shareLinkResponse, apiKeyResponse, auditResponse] =
-      await Promise.all([
+    const [
+      projectResponse,
+      documentResponse,
+      shareLinkResponse,
+      apiKeyResponse,
+      auditResponse,
+      securityDashboardResponse
+    ] = await Promise.all([
       apiGet<{ projects: Project[] }>("/projects", tenantId),
       apiGet<{ documents: DocumentRecord[] }>("/documents", tenantId),
       apiGet<{ shareLinks: ShareLink[] }>("/share-links", tenantId),
       apiGet<{ apiKeys: ApiKeyRecord[] }>("/api-keys", tenantId),
-      apiGet<{ auditEvents: AuditEvent[] }>("/audit-events", tenantId)
+      apiGet<{ auditEvents: AuditEvent[] }>("/audit-events", tenantId),
+      apiGet<SecurityDashboard>("/security-dashboard", tenantId)
     ]);
 
     if (projectResponse) {
@@ -201,6 +229,7 @@ export default function Home() {
     }
 
     setAuditEvents(auditResponse?.auditEvents ?? []);
+    setSecurityDashboard(securityDashboardResponse);
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -556,6 +585,10 @@ export default function Home() {
             <Key aria-hidden="true" />
             API keys
           </a>
+          <a className="nav-item" href="#security">
+            <AlertTriangle aria-hidden="true" />
+            Security
+          </a>
           <a className="nav-item" href="#organization">
             <Building2 aria-hidden="true" />
             Organization
@@ -591,7 +624,7 @@ export default function Home() {
         </header>
 
         <section className="summary-grid" aria-label="Security summary">
-          {securitySignals.map((signal) => {
+          {buildSecuritySignals(securityDashboard).map((signal) => {
             const Icon = signal.icon;
 
             return (
@@ -812,7 +845,7 @@ export default function Home() {
                   <div>
                     <span>{apiKey.name}</span>
                     <small>
-                      {apiKey.keyPrefix} · {apiKey.scopes.join(", ")}
+                      {apiKey.keyPrefix} - {apiKey.scopes.join(", ")}
                     </small>
                   </div>
                   <button
@@ -823,6 +856,44 @@ export default function Home() {
                   >
                     Revoke
                   </button>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="panel" id="security">
+            <div className="panel-heading">
+              <h2>Security dashboard</h2>
+              <ShieldCheck aria-hidden="true" />
+            </div>
+            <dl className="details compact">
+              <div>
+                <dt>MFA coverage</dt>
+                <dd>
+                  {securityDashboard
+                    ? `${securityDashboard.metrics.mfaRequiredMembers}/${securityDashboard.metrics.activeMembers}`
+                    : "0/0"}
+                </dd>
+              </div>
+              <div>
+                <dt>File scans</dt>
+                <dd>
+                  {securityDashboard
+                    ? `${securityDashboard.metrics.cleanFiles} clean, ${securityDashboard.metrics.pendingFiles} pending, ${securityDashboard.metrics.blockedFiles} blocked`
+                    : "No data"}
+                </dd>
+              </div>
+            </dl>
+            <div className="record-list">
+              {securityDashboard?.alerts.map((alert) => (
+                <div className="record-row passive alert-row" key={alert.id}>
+                  <AlertTriangle aria-hidden="true" />
+                  <div>
+                    <span>{alert.title}</span>
+                    <small>
+                      {alert.severity} - {alert.status}
+                    </small>
+                  </div>
                 </div>
               ))}
             </div>
@@ -840,6 +911,27 @@ export default function Home() {
                   <div>
                     <strong>{event.action}</strong>
                     <span>{event.entityType}</span>
+                  </div>
+                  <time>{new Date(event.createdAt).toLocaleTimeString()}</time>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="panel-heading">
+              <h2>Risky events</h2>
+              <AlertTriangle aria-hidden="true" />
+            </div>
+            <div className="audit-list">
+              {securityDashboard?.riskyEvents.map((event) => (
+                <div className="audit-row" key={event.id}>
+                  <span className={`result-dot ${event.result}`} />
+                  <div>
+                    <strong>{event.action}</strong>
+                    <span>
+                      {event.actorType} - {event.entityType}
+                    </span>
                   </div>
                   <time>{new Date(event.createdAt).toLocaleTimeString()}</time>
                 </div>
@@ -892,4 +984,31 @@ function formatRole(role: Role): string {
 
 function formatClassification(classification: Classification): string {
   return classification.charAt(0).toUpperCase() + classification.slice(1);
+}
+
+function buildSecuritySignals(securityDashboard: SecurityDashboard | undefined) {
+  return [
+    {
+      label: "MFA",
+      value: securityDashboard
+        ? `${securityDashboard.metrics.mfaRequiredMembers}/${securityDashboard.metrics.activeMembers}`
+        : "0/0",
+      icon: LockKeyhole
+    },
+    {
+      label: "Denied",
+      value: String(securityDashboard?.metrics.accessDeniedEvents ?? 0),
+      icon: AlertTriangle
+    },
+    {
+      label: "API keys",
+      value: String(securityDashboard?.metrics.activeApiKeys ?? 0),
+      icon: Key
+    },
+    {
+      label: "Share links",
+      value: String(securityDashboard?.metrics.activeShareLinks ?? 0),
+      icon: Link2
+    }
+  ];
 }

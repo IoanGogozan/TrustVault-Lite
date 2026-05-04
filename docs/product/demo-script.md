@@ -28,8 +28,10 @@ This is the main portfolio or interview demo scenario.
 22. The API returns `403`.
 23. Revoke the key.
 24. Show that later API use is rejected.
-25. Show the complete audit log.
-26. Show the CI pipeline with security checks.
+25. Open the security dashboard.
+26. Show MFA coverage, denied access activity, active share links, active API keys, and risky events.
+27. Show the complete audit log with filters for actor, action, and result.
+28. Show the CI pipeline with security checks.
 
 ## Presentation Message
 

@@ -1,5 +1,5 @@
 import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
-import { redactAuditMetadata } from "@trustvault/audit";
+import { redactAuditMetadata, type AuditActorType, type AuditResult } from "@trustvault/audit";
 import { readBaseConfig } from "@trustvault/config";
 import { InMemoryPrivateObjectStorage, type PrivateObjectStorage } from "@trustvault/storage";
 import { validateDocumentUpload } from "@trustvault/validation";
@@ -452,7 +452,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     };
   });
 
-  app.get("/audit-events", async (request, reply) => {
+  app.get<{
+    Querystring: {
+      actorType?: AuditActorType;
+      action?: string;
+      result?: AuditResult;
+      limit?: number;
+    };
+  }>("/audit-events", async (request, reply) => {
     await requireTenantContext(store, request, reply);
 
     if (!request.tenantContext) {
@@ -468,13 +475,39 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       return;
     }
 
-    return {
-      auditEvents: store.auditEvents
-        .filter((event) => event.tenantId === request.tenantContext?.tenant.id)
-        .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
-        .slice(0, 50)
-        .map(toAuditEventResponse)
+    const limit = clampInteger(request.query.limit ?? 50, 1, 100);
+    const action = normalizeName(request.query.action);
+
+    const filters = {
+      tenantId: request.tenantContext.tenant.id,
+      limit,
+      ...(request.query.actorType ? { actorType: request.query.actorType } : {}),
+      ...(action ? { action } : {}),
+      ...(request.query.result ? { result: request.query.result } : {})
     };
+
+    return {
+      auditEvents: filterAuditEvents(store, filters).map(toAuditEventResponse)
+    };
+  });
+
+  app.get("/security-dashboard", async (request, reply) => {
+    await requireTenantContext(store, request, reply);
+
+    if (!request.tenantContext) {
+      return;
+    }
+
+    const allowed = await requirePermission(store, request, reply, "security:read", {
+      tenantId: request.tenantContext.tenant.id,
+      entityType: "security_dashboard"
+    });
+
+    if (!allowed) {
+      return;
+    }
+
+    return buildSecurityDashboardResponse(store, request.tenantContext.tenant.id);
   });
 
   app.get("/share-links", async (request, reply) => {
@@ -1812,6 +1845,130 @@ function toAuditEventResponse(event: {
     metadata: event.metadata,
     createdAt: event.createdAt.toISOString()
   };
+}
+
+function filterAuditEvents(
+  store: AppStore,
+  input: {
+    tenantId: string;
+    actorType?: AuditActorType;
+    action?: string;
+    result?: AuditResult;
+    limit: number;
+  }
+) {
+  return store.auditEvents
+    .filter(
+      (event) =>
+        event.tenantId === input.tenantId &&
+        (!input.actorType || event.actorType === input.actorType) &&
+        (!input.action || event.action === input.action) &&
+        (!input.result || event.result === input.result)
+    )
+    .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
+    .slice(0, input.limit);
+}
+
+function buildSecurityDashboardResponse(store: AppStore, tenantId: string) {
+  const tenantMemberships = store.memberships.filter(
+    (membership) => membership.tenantId === tenantId && membership.status === "active"
+  );
+  const tenantEvents = store.auditEvents.filter((event) => event.tenantId === tenantId);
+  const activeShareLinks = store.shareLinks.filter(
+    (shareLink) =>
+      shareLink.tenantId === tenantId &&
+      !shareLink.revokedAt &&
+      shareLink.expiresAt > new Date() &&
+      (!shareLink.maxDownloads || shareLink.downloadCount < shareLink.maxDownloads)
+  );
+  const activeApiKeys = store.apiKeys.filter(
+    (apiKey) =>
+      apiKey.tenantId === tenantId &&
+      !apiKey.revokedAt &&
+      (!apiKey.expiresAt || apiKey.expiresAt > new Date())
+  );
+  const tenantVersions = store.documentVersions.filter((version) => version.tenantId === tenantId);
+  const riskyEvents = tenantEvents
+    .filter(isRiskySecurityEvent)
+    .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
+    .slice(0, 10);
+
+  return {
+    metrics: {
+      mfaRequiredMembers: tenantMemberships.filter((membership) => membership.mfaRequired).length,
+      activeMembers: tenantMemberships.length,
+      accessDeniedEvents: tenantEvents.filter(
+        (event) =>
+          event.result === "failure" &&
+          (event.action === "authorization.denied" ||
+            event.action === "api_key.denied" ||
+            event.action === "share_link.denied")
+      ).length,
+      cleanFiles: tenantVersions.filter((version) => version.scanStatus === "clean").length,
+      pendingFiles: tenantVersions.filter((version) => version.scanStatus === "pending_scan").length,
+      blockedFiles: tenantVersions.filter((version) => version.scanStatus === "blocked").length,
+      activeApiKeys: activeApiKeys.length,
+      activeShareLinks: activeShareLinks.length,
+      riskyEvents: riskyEvents.length
+    },
+    alerts: buildSecurityAlerts(tenantEvents, activeApiKeys, activeShareLinks),
+    riskyEvents: riskyEvents.map(toAuditEventResponse)
+  };
+}
+
+function buildSecurityAlerts(
+  events: AppStore["auditEvents"],
+  activeApiKeys: AppStore["apiKeys"],
+  activeShareLinks: AppStore["shareLinks"]
+) {
+  return [
+    {
+      id: "access-denied-events",
+      severity: events.some(
+        (event) =>
+          event.result === "failure" &&
+          (event.action === "authorization.denied" ||
+            event.action === "api_key.denied" ||
+            event.action === "share_link.denied")
+      )
+        ? "medium"
+        : "info",
+      title: "Access denied activity",
+      status: events.some(
+        (event) =>
+          event.result === "failure" &&
+          (event.action === "authorization.denied" ||
+            event.action === "api_key.denied" ||
+            event.action === "share_link.denied")
+      )
+        ? "attention"
+        : "clear"
+    },
+    {
+      id: "active-api-keys",
+      severity: activeApiKeys.length > 0 ? "low" : "info",
+      title: "Active API keys",
+      status: activeApiKeys.length > 0 ? "monitor" : "clear"
+    },
+    {
+      id: "public-share-links",
+      severity: activeShareLinks.length > 0 ? "low" : "info",
+      title: "Active share links",
+      status: activeShareLinks.length > 0 ? "monitor" : "clear"
+    }
+  ];
+}
+
+function isRiskySecurityEvent(event: AppStore["auditEvents"][number]): boolean {
+  return (
+    event.action === "authorization.denied" ||
+    event.action === "api_key.created" ||
+    event.action === "api_key.revoked" ||
+    event.action === "api_key.denied" ||
+    event.action === "share_link.created" ||
+    event.action === "share_link.denied" ||
+    event.action === "document.scan_blocked"
+  );
 }
 
 function toShareLinkResponse(shareLink: {

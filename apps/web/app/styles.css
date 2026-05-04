@@ -347,6 +347,21 @@ button:disabled {
   gap: 4px;
 }
 
+.alert-row {
+  justify-content: start;
+}
+
+.alert-row svg {
+  flex: 0 0 auto;
+  color: var(--warning);
+}
+
+.alert-row div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
 .record-row span,
 .audit-row strong {
   min-width: 0;
