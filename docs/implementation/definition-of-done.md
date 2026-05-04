@@ -8,7 +8,7 @@ The application is portfolio-ready when the answers below are demonstrable in th
 | How is IDOR/BOLA prevented? | Object-level authorization plus negative tests |
 | How are roles controlled? | Centralized RBAC/ABAC |
 | How are files protected? | Private storage, validation, scanning, proxy downloads |
-| How are sessions managed? | Secure cookies, revocation, active sessions |
+| How are sessions managed? | Secure cookies and logout/session revocation |
 | How are suspicious events detected? | Audit logs plus security dashboard |
 | How is the API secured? | Scoped API keys, rate limits, no mass assignment |
 | How is secure SDLC demonstrated? | Docs, threat model, CI security scans |

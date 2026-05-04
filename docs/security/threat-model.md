@@ -24,7 +24,6 @@ This threat model covers TrustVault Lite as a B2B multi-tenant SaaS for confiden
 | Owner/Admin | User with administrative rights |
 | Viewer/Auditor | User with limited rights |
 | API client | External system using an API key |
-| Support Operator | Internal operator with no default access to tenant data |
 | External attacker | No account or compromised account |
 | Malicious insider | Legitimate user attempting escalation or cross-tenant access |
 
@@ -34,17 +33,15 @@ This threat model covers TrustVault Lite as a B2B multi-tenant SaaS for confiden
 - Web app -> API.
 - API -> Database.
 - API -> Object storage.
-- API -> Redis/rate limiter.
-- API -> Queue/worker.
-- Worker -> Malware scanner.
-- API -> Identity provider.
+- API -> Rate limiter.
+- API -> In-process scan queue/worker.
 - GitHub Actions -> build/deploy artifacts.
 
 ## STRIDE
 
 | Category | Risk | Mitigation |
 | --- | --- | --- |
-| Spoofing | Stolen session or compromised API key | HttpOnly cookies, MFA, session revoke, API key expiry/revoke |
+| Spoofing | Stolen session or compromised API key | HttpOnly cookies, session revoke, API key expiry/revoke; production identity should add MFA/passkeys |
 | Tampering | Unauthorized role/project/document changes | RBAC/ABAC, DTO allowlist, audit log |
 | Repudiation | User denies an action | Audit events with actor, IP hash, user agent, result |
 | Information Disclosure | Cross-tenant document access | tenant-scoped queries, RLS, object-level auth, negative tests |
@@ -101,13 +98,7 @@ Mitigations:
 - rate limiting;
 - audit event for denial.
 
-### Support Access Abuse
+## Explicit Demo Scope Limits
 
-An internal operator attempts to view tenant data without approval.
-
-Mitigations:
-
-- support operator has no default access;
-- break-glass access requires approval, reason, and expiry;
-- every access is logged as high-risk.
-
+- Production OIDC and MFA/passkeys are documented as the target identity posture, not implemented in the demo.
+- The scan worker uses documented mock scanning instead of ClamAV.

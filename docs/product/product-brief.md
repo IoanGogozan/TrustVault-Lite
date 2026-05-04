@@ -39,22 +39,19 @@ The project should demonstrate technical maturity through the combination of:
 - Scoped API keys.
 - Audit log viewer.
 - Security dashboard.
-- Support access with controlled and logged break-glass workflow.
 
 ## Roles
 
 | Role | Permissions |
 | --- | --- |
-| Owner | Manages the tenant, mock billing, security settings, and members |
+| Owner | Manages the tenant, members, API keys, share links, and security visibility |
 | Admin | Manages projects, documents, invitations, and audit visibility |
 | Member | Uploads and downloads documents in projects they can access |
 | Viewer | Read-only access |
 | Auditor | Read-only access plus audit logs, no changes |
-| Support Operator | Internal role with no default access to tenant data |
 
 ## Key Principle
 
 Authentication tells the system who the user is. Authorization decides what that user may do in the current tenant.
 
 Every request must pass through centralized access control and default to deny.
-

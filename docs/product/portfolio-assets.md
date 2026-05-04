@@ -12,7 +12,7 @@ Capture these views after running the demo flow:
 | `02-evidence-workspace.png` | Evidence workspace | Tenant switcher, project creation, document upload, and document actions. |
 | `03-share-links-api-keys.png` | Share links and API keys | One-time token/key display and revoke controls. |
 | `04-audit-events.png` | Audit events | Lifecycle events and authorization denial evidence. |
-| `05-security-dashboard.png` | Security dashboard | MFA coverage, denied access, scan status, API keys, share links, and risky events. |
+| `05-security-dashboard.png` | Security dashboard | Denied access, scan status, API keys, share links, risky events, and demo MFA-required signal. |
 | `06-github-actions.png` | GitHub Actions | CI and Security workflows with pipeline checks. |
 
 Recommended destination:

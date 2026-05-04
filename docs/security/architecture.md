@@ -2,44 +2,54 @@
 
 ## Context
 
-TrustVault Lite is a B2B multi-tenant SaaS made of a frontend, API, worker, PostgreSQL, Redis, object storage, and identity provider.
+TrustVault Lite is a portfolio demo for a secure multi-tenant evidence portal. The implemented local architecture uses a Next.js web app, a TypeScript API, PostgreSQL with RLS for database-backed tests, private object storage abstractions, an in-process scan queue/worker, audit events, and CI security workflows.
 
-## Component Diagram
+Production identity is intentionally not implemented in this demo. The production path is OIDC Authorization Code Flow with MFA or passkeys through an external identity provider.
+
+## Implemented Component Diagram
 
 ![TrustVault Lite security architecture](../assets/trustvault-security-architecture.svg)
 
 ```mermaid
 flowchart LR
-  Browser[Browser] --> Web[Next.js Web]
-  Web --> API[API]
-  API --> IdP[OIDC Provider]
-  API --> DB[(PostgreSQL + RLS)]
-  API --> Redis[(Redis)]
-  API --> Storage[(Private S3/MinIO)]
-  API --> Queue[Queue]
-  Queue --> Worker[Worker]
-  Worker --> Scanner[ClamAV or Scan Mock]
-  Worker --> DB
+  Browser[Browser] --> Web[Next.js Web App]
+  Web --> API[Secure API]
+  API --> Auth[Development Session Auth]
+  API --> Policy[Authorization Layer]
+  Policy --> DB[(PostgreSQL + RLS)]
+  API --> Storage[(Private Object Storage)]
+  API --> Queue[In-process Scan Queue]
+  Queue --> Worker[Mock Scan Worker]
   Worker --> Storage
+  Worker --> DB
+  API --> Audit[(Audit Events)]
+  API --> Logs[Structured Logs]
 ```
 
-## Auth Flow
+## Production Extension Points
+
+The codebase includes explicit boundaries for production-grade components without claiming they are wired in the local demo:
+
+- OIDC provider for production authentication.
+- Redis-compatible rate limiter adapter for multi-instance rate limits.
+- S3/MinIO-compatible storage adapter.
+- ClamAV or equivalent scanner behind the scan worker boundary.
+
+## Demo Auth Flow
 
 ```mermaid
 sequenceDiagram
   participant U as User
   participant W as Web
-  participant I as OIDC Provider
   participant A as API
 
-  U->>W: Login
-  W->>I: Authorization Code Flow
-  I-->>W: Authorization code
-  W->>I: Exchange code
-  I-->>W: ID/access data
-  W->>A: Create app session
-  A-->>W: HttpOnly Secure SameSite cookie
+  U->>W: Select seeded demo account
+  W->>A: POST /auth/dev-login
+  A->>A: Create server-side session
+  A-->>W: HttpOnly Secure SameSite cookie + CSRF cookie
 ```
+
+The `/auth/dev-login` endpoint is disabled in production mode.
 
 ## Tenant Request Flow
 
@@ -71,24 +81,24 @@ sequenceDiagram
   participant W as Worker
   participant DB as Database
 
-  U->>A: Upload document
+  U->>A: Upload base64 demo payload
   A->>A: Authz + file validation
   A->>S: Store private object
   A->>DB: Create version pending_scan
   A->>Q: Enqueue scan job
-  Q->>W: Scan job
+  Q->>W: Process job
   W->>S: Read object
-  W->>W: Scan
+  W->>W: Mock scan
   W->>DB: Mark clean or blocked
 ```
 
 ## Download Flow
 
-1. Actor requests download.
-2. API authenticates the actor.
-3. API verifies tenant, role, project, and scan status.
+1. Actor requests download metadata or proxy file content.
+2. API authenticates the actor or validates the public share token.
+3. API verifies tenant, role, project, share-link state, and scan status.
 4. API refuses files that are not `clean`.
-5. API creates a short-lived signed URL.
+5. API streams clean content through a proxy endpoint without exposing storage keys.
 6. API writes an audit event.
 
 ## Data Model
@@ -104,14 +114,12 @@ Main tables:
 - `share_links`
 - `api_keys`
 - `audit_events`
-- `support_access_requests`
-
 ## Browser Hardening
 
-Minimum headers:
+Implemented headers:
 
 - `Content-Security-Policy`
-- `Strict-Transport-Security`
+- `Strict-Transport-Security` in production web responses
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: strict-origin-when-cross-origin`

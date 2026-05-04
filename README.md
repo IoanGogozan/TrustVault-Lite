@@ -16,16 +16,16 @@ TrustVault Lite is inspired by:
 - NIST Digital Identity Guidelines for digital identity principles.
 - OWASP SAMM for a simplified secure SDLC.
 
-## Target Features
+## Implemented Capabilities
 
 - Multi-tenant organizations with `tenant_id` on business data.
 - Centralized RBAC and ABAC policy layer.
 - PostgreSQL Row Level Security as defense in depth.
 - Secure file uploads with validation, scanning, and private storage.
-- Short-lived signed download URLs.
+- Proxy downloads for clean files without exposing storage keys.
 - Hashed API keys with scopes, expiry, and revocation.
 - Audit logs and security dashboard.
-- Secure sessions and MFA/passkeys through an identity provider.
+- Development-only demo login, secure cookies, CSRF protection, and session revocation.
 - CI/CD with linting, tests, dependency scanning, secret scanning, SAST, container scanning, and ZAP baseline.
 
 ## Documentation
@@ -34,7 +34,6 @@ TrustVault Lite is inspired by:
 - [Demo script](docs/product/demo-script.md)
 - [Demo accounts](docs/product/demo-accounts.md)
 - [Portfolio assets](docs/product/portfolio-assets.md)
-- [Implementation plan](docs/implementation/implementation-plan.md)
 - [Implemented controls](docs/implementation/implemented-controls.md)
 - [Definition of done](docs/implementation/definition-of-done.md)
 - [Security overview](docs/security/README.md)
@@ -48,21 +47,24 @@ TrustVault Lite is inspired by:
 
 ## Architecture Diagram
 
+This diagram includes implemented local components plus production extension points such as OIDC, Redis, and scanner services. The implemented scope is listed below.
+
 ![TrustVault Lite security architecture](docs/assets/trustvault-security-architecture.svg)
 
-## Proposed Repository Structure
+## Repository Structure
 
 ```text
 trustvault-lite/
   apps/
     web/
     api/
-    worker/
   packages/
-    authz/
-    validation/
     audit/
+    authz/
     config/
+    database/
+    storage/
+    validation/
   infra/
     docker/
     migrations/
@@ -132,14 +134,6 @@ pnpm test:security
 
 This runs linting, unit/integration tests, type checks, and database-backed tests.
 
-If `make` is available, equivalent targets are:
-
-```bash
-make demo
-make test-security
-make zap-scan
-```
-
 The ZAP scan expects the web app to be available at `http://localhost:3000` on the host machine.
 
 ## Demo Accounts
@@ -159,12 +153,12 @@ See [demo accounts](docs/product/demo-accounts.md) for the role-by-role walkthro
 
 | Area | Control | Implemented Through | Testable Through |
 | --- | --- | --- | --- |
-| Auth | MFA / passkeys | Identity provider | Login flow |
+| Auth | Demo login + session controls | Development auth flow | Login/session tests |
 | Sessions | Secure cookies | BFF/session config | Header tests |
 | Authorization | RBAC + ABAC | `can()` policy layer | Role tests |
 | Tenant isolation | RLS + `tenant_id` | PostgreSQL policies | Cross-tenant tests |
 | API Security | Scoped API keys | Hash + scopes + expiry | API integration tests |
-| File Security | Validation + scanning | Upload worker | Upload tests |
+| File Security | Validation + scanning | In-process mock scan worker | Upload tests |
 | Data Protection | Private storage | Proxy downloads | Download tests |
 | Auditability | Audit events | Audit service | Audit assertions |
 | Browser Security | CSP + headers | Middleware | Header tests |
@@ -177,5 +171,4 @@ See [demo accounts](docs/product/demo-accounts.md) for the role-by-role walkthro
 - This is a portfolio demo, not a certified product.
 - Authentication currently uses demo login with seeded users. Production identity should use OIDC Authorization Code Flow with MFA or passkeys.
 - Uploads currently use base64 JSON payloads for demo simplicity. Production upload transport should move to multipart or presigned upload URLs with the same validation and scan pipeline.
-- Malware scanning may start with a documented mock and later move to ClamAV.
-- Billing is mocked.
+- Malware scanning uses a documented mock worker instead of ClamAV.

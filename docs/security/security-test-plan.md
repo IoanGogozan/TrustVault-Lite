@@ -28,7 +28,8 @@
 - `pending_scan` file cannot be downloaded.
 - `blocked` file cannot be downloaded.
 - storage key is not exposed in API response.
-- download link expires.
+- share link expiry prevents download.
+- clean files can be downloaded through the API proxy without exposing storage keys.
 
 ## API Security Tests
 
@@ -42,7 +43,7 @@
 ## Browser/HTTP Tests
 
 - CSP is present.
-- HSTS is present in production.
+- production web configuration includes HSTS.
 - `X-Content-Type-Options: nosniff` is present.
 - `X-Frame-Options: DENY` is present.
 - CORS blocks unknown origin.
@@ -57,6 +58,5 @@
 - dependency scan.
 - secret scan.
 - SAST.
-- container scan.
+- Trivy filesystem and container-style scan.
 - OWASP ZAP baseline.
-- SBOM generation for future release artifacts.

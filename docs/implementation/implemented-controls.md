@@ -67,7 +67,7 @@ External API:
 - `GET /audit-events` supports filtering by `actorType`, `action`, `result`, and `limit`.
 - `GET /security-dashboard` requires `security:read`.
 - Authentication, logout, invitation creation, invitation acceptance, and membership role changes are recorded as audit events.
-- Dashboard metrics include MFA coverage, access denied events, file scan status, active API keys, and active share links.
+- Dashboard metrics include the demo MFA-required member count, access denied events, file scan status, active API keys, and active share links.
 - Risky events highlight denied access, authentication activity, invitation activity, role changes, API key lifecycle changes, share link activity, and blocked file scans.
 - Dashboard responses remain tenant-scoped and do not expose secrets, raw tokens, API key hashes, or storage keys.
 
@@ -110,4 +110,3 @@ External API:
 - Upload transport uses base64 JSON for demo simplicity; production upload transport should use multipart or presigned uploads.
 - Malware scanning uses a documented mock worker instead of ClamAV.
 - Redis and S3-compatible adapters are present as boundaries, but local demo defaults remain in-memory.
-- SBOM generation is planned for release artifacts but is not implemented yet.

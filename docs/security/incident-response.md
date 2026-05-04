@@ -12,12 +12,12 @@ This document defines simple playbooks for the demo.
 
 ## Compromised Account
 
-1. Revoke the user's active sessions.
-2. Force credential reset at the identity provider.
+1. Invalidate affected session records in the session store. The demo supports session revocation on logout; production should add administrator-driven session revocation.
+2. In production, force credential reset at the identity provider.
 3. Review audit logs for recent actions.
 4. Revoke API keys created or used suspiciously.
 5. Mark the event as high-risk.
-6. Create follow-up work for MFA enforcement if it was missing.
+6. Create follow-up work for MFA enforcement if production identity is missing it.
 
 ## Compromised API Key
 
@@ -35,12 +35,3 @@ This document defines simple playbooks for the demo.
 3. Review tenant membership and role changes.
 4. Check whether the document was accessed through an API key.
 5. Mark the document for review.
-
-## Support Access Misuse
-
-1. Revoke active support access.
-2. Review reason, approval, and expiry.
-3. Search all `support.*` actions.
-4. Notify the tenant Owner in the demo flow.
-5. Create remediation for policy or approval workflow gaps.
-
