@@ -254,7 +254,8 @@ export default function Home() {
   async function handleLogout() {
     await fetch(`${apiBaseUrl}/auth/logout`, {
       method: "POST",
-      credentials: "include"
+      credentials: "include",
+      headers: csrfHeaders()
     });
     setCurrentUser(undefined);
     setSelectedTenantId(undefined);
@@ -267,7 +268,7 @@ export default function Home() {
     const response = await fetch(`${apiBaseUrl}/tenants`, {
       method: "POST",
       credentials: "include",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", ...csrfHeaders() },
       body: JSON.stringify({ name: tenantName })
     });
 
@@ -497,6 +498,7 @@ export default function Home() {
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
+        ...csrfHeaders(),
         "X-Tenant-Id": tenantId
       },
       body: JSON.stringify(body)
@@ -509,7 +511,7 @@ export default function Home() {
     const response = await fetch(`${apiBaseUrl}${path}`, {
       method: "DELETE",
       credentials: "include",
-      headers: { "X-Tenant-Id": tenantId }
+      headers: { ...csrfHeaders(), "X-Tenant-Id": tenantId }
     });
 
     return response.ok;
@@ -984,6 +986,16 @@ function formatRole(role: Role): string {
 
 function formatClassification(classification: Classification): string {
   return classification.charAt(0).toUpperCase() + classification.slice(1);
+}
+
+function csrfHeaders(): Record<string, string> {
+  const csrfToken = document.cookie
+    .split(";")
+    .map((cookie) => cookie.trim())
+    .find((cookie) => cookie.startsWith("tv_csrf="))
+    ?.split("=")[1];
+
+  return csrfToken ? { "X-CSRF-Token": csrfToken } : {};
 }
 
 function buildSecuritySignals(securityDashboard: SecurityDashboard | undefined) {

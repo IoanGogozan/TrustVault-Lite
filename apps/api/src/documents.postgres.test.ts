@@ -529,13 +529,21 @@ async function login(app: ReturnType<typeof buildApp>, email: string): Promise<s
     url: "/auth/dev-login",
     payload: { email }
   });
-  const cookie = response.headers["set-cookie"];
+  const cookie = headerValue(response.headers["set-cookie"]);
 
-  if (typeof cookie !== "string") {
+  if (!cookie) {
     throw new Error("Expected login to set a session cookie");
   }
 
   return cookie;
+}
+
+function headerValue(value: string | string[] | number | undefined): string {
+  if (Array.isArray(value)) {
+    return value.join("; ");
+  }
+
+  return typeof value === "string" ? value : "";
 }
 
 function pdfUploadPayload() {

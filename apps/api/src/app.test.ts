@@ -23,12 +23,26 @@ describe("phase 1 auth and tenant foundation", () => {
 
     expect(response.statusCode).toBe(204);
 
-    const cookie = response.headers["set-cookie"];
+    const cookie = headerValue(response.headers["set-cookie"]);
 
     expect(cookie).toContain("tv_session=");
     expect(cookie).toContain("HttpOnly");
     expect(cookie).toContain("Secure");
     expect(cookie).toContain("SameSite=Lax");
+    expect(cookie).toContain("tv_csrf=");
+  });
+
+  it("sets baseline security headers", async () => {
+    const app = buildApp({ store: createDemoStore() });
+
+    const response = await app.inject({ method: "GET", url: "/health" });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.headers["content-security-policy"]).toContain("default-src 'none'");
+    expect(response.headers["x-content-type-options"]).toBe("nosniff");
+    expect(response.headers["x-frame-options"]).toBe("DENY");
+    expect(response.headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+    expect(response.headers["permissions-policy"]).toContain("camera=()");
   });
 
   it("allows credentialed CORS only for the web origin", async () => {
@@ -46,6 +60,7 @@ describe("phase 1 auth and tenant foundation", () => {
     expect(response.statusCode).toBe(204);
     expect(response.headers["access-control-allow-origin"]).toBe("http://localhost:3000");
     expect(response.headers["access-control-allow-credentials"]).toBe("true");
+    expect(response.headers["access-control-allow-headers"]).toContain("X-CSRF-Token");
   });
 
   it("rejects preflight requests from unknown origins", async () => {
@@ -62,6 +77,52 @@ describe("phase 1 auth and tenant foundation", () => {
 
     expect(response.statusCode).toBe(403);
     expect(response.json()).toEqual({ error: "origin_not_allowed" });
+  });
+
+  it("requires CSRF tokens for browser mutating session requests", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const cookie = await login(app, "owner@acme.test");
+
+    const missingToken = await app.inject({
+      method: "POST",
+      url: "/tenants",
+      headers: {
+        cookie,
+        origin: "http://localhost:3000"
+      },
+      payload: { name: "Missing Token Security" }
+    });
+
+    expect(missingToken.statusCode).toBe(403);
+    expect(missingToken.json()).toEqual({ error: "csrf_token_invalid" });
+
+    const accepted = await app.inject({
+      method: "POST",
+      url: "/tenants",
+      headers: {
+        cookie,
+        origin: "http://localhost:3000",
+        "x-csrf-token": csrfTokenFromCookie(cookie)
+      },
+      payload: { name: "Accepted Token Security" }
+    });
+
+    expect(accepted.statusCode).toBe(201);
+  });
+
+  it("rejects request bodies above the configured limit without stack traces", async () => {
+    const app = buildApp({ store: createDemoStore() });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/dev-login",
+      headers: { "content-type": "application/json" },
+      payload: JSON.stringify({ email: "owner@acme.test", padding: "x".repeat(1_000_001) })
+    });
+
+    expect(response.statusCode).toBe(413);
+    expect(response.json()).toEqual({ error: "request_body_too_large" });
+    expect(response.body).not.toContain("stack");
   });
 
   it("lists only active tenant memberships for the current user", async () => {
@@ -423,7 +484,8 @@ describe("phase 1 auth and tenant foundation", () => {
     });
 
     expect(accepted.statusCode).toBe(200);
-    expect(accepted.headers["set-cookie"]).toContain("tv_session=");
+    expect(headerValue(accepted.headers["set-cookie"])).toContain("tv_session=");
+    expect(headerValue(accepted.headers["set-cookie"])).toContain("tv_csrf=");
     expect(accepted.json()).toMatchObject({
       user: {
         email: "new-member@acme.test",
@@ -436,7 +498,7 @@ describe("phase 1 auth and tenant foundation", () => {
     const me = await app.inject({
       method: "GET",
       url: "/me",
-      headers: { cookie: accepted.headers["set-cookie"] as string }
+      headers: { cookie: headerValue(accepted.headers["set-cookie"]) }
     });
 
     expect(me.statusCode).toBe(200);
@@ -1621,13 +1683,34 @@ async function login(app: ReturnType<typeof buildApp>, email: string): Promise<s
     payload: { email }
   });
 
-  const cookie = response.headers["set-cookie"];
+  const cookie = headerValue(response.headers["set-cookie"]);
 
-  if (typeof cookie !== "string") {
+  if (!cookie) {
     throw new Error("Expected login to set a session cookie");
   }
 
   return cookie;
+}
+
+function headerValue(value: string | string[] | number | undefined): string {
+  if (Array.isArray(value)) {
+    return value.join("; ");
+  }
+
+  return typeof value === "string" ? value : "";
+}
+
+function csrfTokenFromCookie(cookie: string): string {
+  const csrfCookie = cookie
+    .split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith("tv_csrf="));
+
+  if (!csrfCookie) {
+    throw new Error("Expected CSRF cookie");
+  }
+
+  return csrfCookie.split("=")[1] ?? "";
 }
 
 function pdfUploadPayload(marker = "") {

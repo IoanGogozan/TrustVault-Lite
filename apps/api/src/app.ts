@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance, type FastifyRequest } from "fastify";
+import Fastify, { type FastifyInstance, type FastifyReply, type FastifyRequest } from "fastify";
 import { redactAuditMetadata, type AuditActorType, type AuditResult } from "@trustvault/audit";
 import { readBaseConfig } from "@trustvault/config";
 import { InMemoryPrivateObjectStorage, type PrivateObjectStorage } from "@trustvault/storage";
@@ -20,7 +20,7 @@ import {
   type MembershipRole,
   type User
 } from "./domain.js";
-import { clearSessionCookie, setSessionCookie } from "./http.js";
+import { clearSessionCookie, csrfCookieName, readCookie, sessionCookieName, setSessionCookie } from "./http.js";
 import { requirePermission } from "./authorization.js";
 import {
   InMemoryDocumentRepository,
@@ -64,17 +64,48 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const scanQueue =
     options.scanQueue ?? new InMemoryScanJobQueue(store, documentRepository, storage);
   const app = Fastify({
-    logger: config.env === "production"
+    logger: config.env === "production",
+    bodyLimit: 1_000_000
   });
 
   app.addHook("onRequest", async (request, reply) => {
     const origin = request.headers.origin;
+
+    setSecurityHeaders(reply, config.env);
 
     if (origin && isAllowedOrigin(origin)) {
       reply.header("Access-Control-Allow-Origin", origin);
       reply.header("Access-Control-Allow-Credentials", "true");
       reply.header("Vary", "Origin");
     }
+
+    if (requiresCsrfCheck(request)) {
+      const csrfCookie = readCookie(request, csrfCookieName);
+      const csrfHeader = request.headers["x-csrf-token"];
+
+      if (!csrfCookie || csrfHeader !== csrfCookie) {
+        return reply.code(403).send({ error: "csrf_token_invalid" });
+      }
+    }
+  });
+
+  app.setErrorHandler((error, _request, reply) => {
+    const statusCode =
+      typeof error === "object" &&
+      error !== null &&
+      "statusCode" in error &&
+      typeof error.statusCode === "number" &&
+      error.statusCode >= 400
+        ? error.statusCode
+        : 500;
+    const errorCode =
+      statusCode === 413
+        ? "request_body_too_large"
+        : statusCode >= 500
+          ? "internal_server_error"
+          : "bad_request";
+
+    return reply.code(statusCode).send({ error: errorCode });
   });
 
   app.options("*", async (request, reply) => {
@@ -87,7 +118,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     return reply
       .header("Access-Control-Allow-Origin", origin)
       .header("Access-Control-Allow-Credentials", "true")
-      .header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Tenant-Id")
+      .header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-CSRF-Token, X-Tenant-Id")
       .header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
       .header("Vary", "Origin")
       .code(204)
@@ -1531,6 +1562,41 @@ function normalizeName(name: string | undefined): string | undefined {
   const normalized = name?.trim().replace(/\s+/g, " ");
 
   return normalized || undefined;
+}
+
+function setSecurityHeaders(reply: FastifyReply, env: string): void {
+  reply.header("Content-Security-Policy", "default-src 'none'; frame-ancestors 'none'; base-uri 'none'");
+  reply.header("X-Content-Type-Options", "nosniff");
+  reply.header("X-Frame-Options", "DENY");
+  reply.header("Referrer-Policy", "strict-origin-when-cross-origin");
+  reply.header("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+  reply.header("Cross-Origin-Resource-Policy", "same-site");
+
+  if (env === "production") {
+    reply.header("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+}
+
+function requiresCsrfCheck(request: FastifyRequest): boolean {
+  const method = request.method.toUpperCase();
+
+  if (method !== "POST" && method !== "PATCH" && method !== "PUT" && method !== "DELETE") {
+    return false;
+  }
+
+  if (!request.headers.origin || !isAllowedOrigin(request.headers.origin)) {
+    return false;
+  }
+
+  if (request.url === "/auth/dev-login" || request.url === "/invitations/accept") {
+    return false;
+  }
+
+  if (!readCookie(request, sessionCookieName)) {
+    return false;
+  }
+
+  return !request.headers.authorization?.startsWith("Bearer ");
 }
 
 function normalizeEmail(email: string | undefined): string | undefined {

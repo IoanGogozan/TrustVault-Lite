@@ -1,6 +1,8 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
+import { randomUUID } from "node:crypto";
 
 export const sessionCookieName = "tv_session";
+export const csrfCookieName = "tv_csrf";
 
 export function readCookie(request: FastifyRequest, name: string): string | undefined {
   const cookieHeader = request.headers.cookie;
@@ -17,8 +19,7 @@ export function readCookie(request: FastifyRequest, name: string): string | unde
 }
 
 export function setSessionCookie(reply: FastifyReply, sessionId: string): void {
-  reply.header(
-    "Set-Cookie",
+  reply.header("Set-Cookie", [
     [
       `${sessionCookieName}=${sessionId}`,
       "Path=/",
@@ -26,13 +27,19 @@ export function setSessionCookie(reply: FastifyReply, sessionId: string): void {
       "Secure",
       "SameSite=Lax",
       "Max-Age=28800"
+    ].join("; "),
+    [
+      `${csrfCookieName}=${randomUUID()}`,
+      "Path=/",
+      "Secure",
+      "SameSite=Lax",
+      "Max-Age=28800"
     ].join("; ")
-  );
+  ]);
 }
 
 export function clearSessionCookie(reply: FastifyReply): void {
-  reply.header(
-    "Set-Cookie",
+  reply.header("Set-Cookie", [
     [
       `${sessionCookieName}=`,
       "Path=/",
@@ -40,7 +47,13 @@ export function clearSessionCookie(reply: FastifyReply): void {
       "Secure",
       "SameSite=Lax",
       "Max-Age=0"
+    ].join("; "),
+    [
+      `${csrfCookieName}=`,
+      "Path=/",
+      "Secure",
+      "SameSite=Lax",
+      "Max-Age=0"
     ].join("; ")
-  );
+  ]);
 }
-

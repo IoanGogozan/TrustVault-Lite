@@ -239,18 +239,28 @@ Remaining hardening:
 
 ## Phase 8: Frontend/Backend Hardening
 
-Tasks:
+Status: partially implemented for the current demo scope.
 
-- CSP.
-- Security headers.
-- CORS allowlist.
-- CSRF protection.
-- Request body limits.
-- Input validation.
-- Output encoding.
-- Error handling without stack traces in production.
-- Structured logs with redaction.
-- Config validation at startup.
+Completed:
+
+- Add API CSP and baseline security headers.
+- Keep credentialed CORS allowlisted.
+- Add CSRF protection for browser-origin mutating session requests.
+- Add request body limits.
+- Add stable error responses without stack traces.
+- Send CSRF tokens from the web client for mutating session-backed requests.
+- Keep existing output filtering for sensitive document, share-link, and API key fields.
+
+Implementation note:
+
+- Details are documented in `docs/implementation/phase-8-hardening.md`.
+
+Remaining hardening:
+
+- Add frontend CSP headers through Next.js middleware or hosting config.
+- Add rate limiting.
+- Expand schema validation across all request and query inputs.
+- Add structured logs with redaction.
 
 ## Phase 9: CI/CD Security
 
