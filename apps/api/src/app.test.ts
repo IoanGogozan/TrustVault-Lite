@@ -1297,6 +1297,190 @@ describe("phase 1 auth and tenant foundation", () => {
       })
     });
   });
+
+  it("creates API keys with one-time values and stores only hashes", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const ownerCookie = await login(app, "owner@acme.test");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api-keys",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        name: "Read Only Integration",
+        scopes: ["documents:read"],
+        expiresInDays: 30
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().key).toEqual(expect.stringMatching(/^tv_live_/));
+    expect(response.json().apiKey).toMatchObject({
+      tenantId: "tenant_acme",
+      name: "Read Only Integration",
+      scopes: ["documents:read"]
+    });
+    expect(response.json().apiKey).not.toHaveProperty("keyHash");
+    expect(store.apiKeys[0]?.keyHash).not.toBe(response.json().key);
+    expect(JSON.stringify(store.auditEvents)).not.toContain(response.json().key);
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api-keys",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().apiKeys[0]).not.toHaveProperty("keyHash");
+  });
+
+  it("uses scoped API keys for external document reads and denies missing write scope", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const ownerCookie = await login(app, "owner@acme.test");
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api-keys",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        name: "Read Only Integration",
+        scopes: ["documents:read"]
+      }
+    });
+    const key = created.json().key;
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api/v1/documents",
+      headers: { authorization: `Bearer ${key}` }
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().documents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "document_acme_policy",
+          tenantId: "tenant_acme"
+        })
+      ])
+    );
+    expect(listResponse.json().documents).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tenantId: "tenant_globex"
+        })
+      ])
+    );
+    expect(store.apiKeys[0]?.lastUsedAt).toBeInstanceOf(Date);
+    expect(store.auditEvents.at(-1)).toMatchObject({
+      actorType: "api_key",
+      action: "api.documents.list",
+      result: "success"
+    });
+
+    const createDenied = await app.inject({
+      method: "POST",
+      url: "/api/v1/documents",
+      headers: { authorization: `Bearer ${key}` },
+      payload: {
+        title: "Denied API Upload",
+        projectId: "project_acme_soc2"
+      }
+    });
+
+    expect(createDenied.statusCode).toBe(403);
+    expect(createDenied.json()).toEqual({ error: "api_key_scope_denied" });
+  });
+
+  it("allows write-scoped API keys to create documents", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const ownerCookie = await login(app, "owner@acme.test");
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api-keys",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        name: "Write Integration",
+        scopes: ["documents:read", "documents:write"]
+      }
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/documents",
+      headers: { authorization: `Bearer ${created.json().key}` },
+      payload: {
+        title: "API Evidence",
+        projectId: "project_acme_soc2",
+        classification: "confidential"
+      }
+    });
+
+    expect(response.statusCode).toBe(201);
+    expect(response.json().document).toMatchObject({
+      tenantId: "tenant_acme",
+      title: "API Evidence",
+      projectId: "project_acme_soc2"
+    });
+    expect(response.json().document).not.toHaveProperty("storageKey");
+  });
+
+  it("denies revoked and expired API keys", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const ownerCookie = await login(app, "owner@acme.test");
+
+    const revoked = await app.inject({
+      method: "POST",
+      url: "/api-keys",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        name: "Revoked Integration",
+        scopes: ["documents:read"]
+      }
+    });
+
+    await app.inject({
+      method: "DELETE",
+      url: `/api-keys/${revoked.json().apiKey.id}`,
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    const revokedUse = await app.inject({
+      method: "GET",
+      url: "/api/v1/documents",
+      headers: { authorization: `Bearer ${revoked.json().key}` }
+    });
+
+    expect(revokedUse.statusCode).toBe(401);
+    expect(revokedUse.json()).toEqual({ error: "api_key_revoked" });
+
+    const expired = await app.inject({
+      method: "POST",
+      url: "/api-keys",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        name: "Expired Integration",
+        scopes: ["documents:read"]
+      }
+    });
+    store.apiKeys.find((apiKey) => apiKey.id === expired.json().apiKey.id)!.expiresAt = new Date(
+      Date.now() - 1000
+    );
+
+    const expiredUse = await app.inject({
+      method: "GET",
+      url: "/api/v1/documents",
+      headers: { authorization: `Bearer ${expired.json().key}` }
+    });
+
+    expect(expiredUse.statusCode).toBe(401);
+    expect(expiredUse.json()).toEqual({ error: "api_key_expired" });
+  });
 });
 
 async function login(app: ReturnType<typeof buildApp>, email: string): Promise<string> {

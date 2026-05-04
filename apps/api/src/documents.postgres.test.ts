@@ -1,6 +1,7 @@
 import { DatabasePool, withTenantContext } from "@trustvault/database";
 import { describe, expect, it, beforeAll, afterAll } from "vitest";
 import { buildApp } from "./app.js";
+import { PostgresApiKeyRepository } from "./api-keys.js";
 import { PostgresDocumentRepository } from "./documents.js";
 import { PostgresProjectRepository } from "./projects.js";
 import { PostgresShareLinkRepository } from "./share-links.js";
@@ -278,6 +279,57 @@ describe.skipIf(!runDbTests)("PostgreSQL document RLS integration", () => {
     expect(revokeResponse.statusCode).toBe(200);
     expect(revokeResponse.json().shareLink).toHaveProperty("revokedAt");
   });
+
+  it("creates lists and revokes API keys in the selected tenant context", async () => {
+    const app = buildApp({
+      store: createUuidStore(),
+      apiKeyRepository: new PostgresApiKeyRepository(database)
+    });
+    const ownerCookie = await login(app, "owner-db@acme.test");
+
+    const createResponse = await app.inject({
+      method: "POST",
+      url: "/api-keys",
+      headers: { cookie: ownerCookie, "x-tenant-id": tenantAId },
+      payload: {
+        name: "Database Integration",
+        scopes: ["documents:read"],
+        expiresInDays: 30
+      }
+    });
+
+    expect(createResponse.statusCode).toBe(201);
+    expect(createResponse.json().key).toEqual(expect.stringMatching(/^tv_live_/));
+    expect(createResponse.json().apiKey).toMatchObject({
+      tenantId: tenantAId,
+      name: "Database Integration",
+      scopes: ["documents:read"]
+    });
+    expect(createResponse.json().apiKey).not.toHaveProperty("keyHash");
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: "/api-keys",
+      headers: { cookie: ownerCookie, "x-tenant-id": tenantAId }
+    });
+
+    expect(listResponse.statusCode).toBe(200);
+    expect(listResponse.json().apiKeys).toEqual([
+      expect.objectContaining({
+        id: createResponse.json().apiKey.id,
+        tenantId: tenantAId
+      })
+    ]);
+
+    const revokeResponse = await app.inject({
+      method: "DELETE",
+      url: `/api-keys/${createResponse.json().apiKey.id}`,
+      headers: { cookie: ownerCookie, "x-tenant-id": tenantAId }
+    });
+
+    expect(revokeResponse.statusCode).toBe(200);
+    expect(revokeResponse.json().apiKey).toHaveProperty("revokedAt");
+  });
 });
 
 async function seedDatabase(database: DatabasePool): Promise<void> {
@@ -310,6 +362,11 @@ async function seedDatabase(database: DatabasePool): Promise<void> {
        VALUES ($1, $2, $3, 'Tenant A Evidence', 'confidential', $4, NULL)
        ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, current_version_id = NULL, deleted_at = NULL`,
       [tenantADocumentId, tenantAId, tenantAProjectId, ownerUserId]
+    );
+    await tx.execute(
+      `DELETE FROM api_keys
+       WHERE tenant_id = $1`,
+      [tenantAId]
     );
     await tx.execute(
       `DELETE FROM share_links
@@ -349,6 +406,11 @@ async function seedDatabase(database: DatabasePool): Promise<void> {
        VALUES ($1, $2, $3, 'Tenant B Evidence', 'confidential', $4, NULL)
        ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, current_version_id = NULL, deleted_at = NULL`,
       [tenantBDocumentId, tenantBId, tenantBProjectId, ownerUserId]
+    );
+    await tx.execute(
+      `DELETE FROM api_keys
+       WHERE tenant_id = $1`,
+      [tenantBId]
     );
     await tx.execute(
       `DELETE FROM share_links

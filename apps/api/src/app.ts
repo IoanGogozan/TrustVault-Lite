@@ -13,6 +13,8 @@ import {
 } from "./auth.js";
 import {
   createDemoStore,
+  type ApiKey,
+  type ApiKeyScope,
   type AppStore,
   type DocumentClassification,
   type MembershipRole,
@@ -35,12 +37,17 @@ import {
   InMemoryShareLinkRepository,
   type ShareLinkRepository
 } from "./share-links.js";
+import {
+  InMemoryApiKeyRepository,
+  type ApiKeyRepository
+} from "./api-keys.js";
 
 export type BuildAppOptions = {
   store?: AppStore;
   documentRepository?: DocumentRepository;
   projectRepository?: ProjectRepository;
   shareLinkRepository?: ShareLinkRepository;
+  apiKeyRepository?: ApiKeyRepository;
   scanQueue?: ScanJobQueue;
   storage?: PrivateObjectStorage;
 };
@@ -52,6 +59,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const projectRepository = options.projectRepository ?? new InMemoryProjectRepository(store);
   const shareLinkRepository =
     options.shareLinkRepository ?? new InMemoryShareLinkRepository(store);
+  const apiKeyRepository = options.apiKeyRepository ?? new InMemoryApiKeyRepository(store);
   const storage = options.storage ?? new InMemoryPrivateObjectStorage(store.storageObjects);
   const scanQueue =
     options.scanQueue ?? new InMemoryScanJobQueue(store, documentRepository, storage);
@@ -79,7 +87,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     return reply
       .header("Access-Control-Allow-Origin", origin)
       .header("Access-Control-Allow-Credentials", "true")
-      .header("Access-Control-Allow-Headers", "Content-Type, X-Tenant-Id")
+      .header("Access-Control-Allow-Headers", "Authorization, Content-Type, X-Tenant-Id")
       .header("Access-Control-Allow-Methods", "GET, POST, PATCH, DELETE, OPTIONS")
       .header("Vary", "Origin")
       .code(204)
@@ -492,6 +500,139 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     };
   });
 
+  app.get("/api-keys", async (request, reply) => {
+    await requireTenantContext(store, request, reply);
+
+    if (!request.tenantContext) {
+      return;
+    }
+
+    const allowed = await requirePermission(store, request, reply, "api_keys:read", {
+      tenantId: request.tenantContext.tenant.id,
+      entityType: "api_key"
+    });
+
+    if (!allowed) {
+      return;
+    }
+
+    return {
+      apiKeys: (await apiKeyRepository.list(request.tenantContext.tenant.id)).map(
+        toApiKeyResponse
+      )
+    };
+  });
+
+  app.post<{
+    Body: {
+      name?: string;
+      scopes?: ApiKeyScope[];
+      expiresInDays?: number;
+    };
+  }>("/api-keys", async (request, reply) => {
+    await requireTenantContext(store, request, reply);
+
+    if (!request.tenantContext) {
+      return;
+    }
+
+    const allowed = await requirePermission(store, request, reply, "api_keys:create", {
+      tenantId: request.tenantContext.tenant.id,
+      entityType: "api_key"
+    });
+
+    if (!allowed) {
+      return;
+    }
+
+    const name = normalizeName(request.body.name);
+    const scopes = request.body.scopes;
+
+    if (!name) {
+      return reply.code(400).send({ error: "api_key_name_required" });
+    }
+
+    if (!scopes?.length || !scopes.every(isApiKeyScope)) {
+      return reply.code(400).send({ error: "invalid_api_key_scopes" });
+    }
+
+    const expiresInDays =
+      request.body.expiresInDays === undefined
+        ? undefined
+        : clampInteger(request.body.expiresInDays, 1, 365);
+    const apiKeyValue = createApiKeyValue(request.tenantContext.tenant.id);
+    const apiKey = await apiKeyRepository.create({
+      tenantId: request.tenantContext.tenant.id,
+      name,
+      keyPrefix: apiKeyValue.split(".")[0] ?? "tv_live",
+      keyHash: hashSecret(apiKeyValue),
+      scopes: Array.from(new Set(scopes)),
+      ...(expiresInDays
+        ? { expiresAt: new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000) }
+        : {}),
+      createdBy: request.tenantContext.user.id
+    });
+
+    appendAuditEvent(store, request, {
+      action: "api_key.created",
+      entityType: "api_key",
+      entityId: apiKey.id,
+      result: "success",
+      metadata: {
+        keyPrefix: apiKey.keyPrefix,
+        scopes: apiKey.scopes,
+        expiresAt: apiKey.expiresAt?.toISOString()
+      }
+    });
+
+    return reply.code(201).send({
+      apiKey: toApiKeyResponse(apiKey),
+      key: apiKeyValue
+    });
+  });
+
+  app.delete<{ Params: { apiKeyId: string } }>(
+    "/api-keys/:apiKeyId",
+    async (request, reply) => {
+      await requireTenantContext(store, request, reply);
+
+      if (!request.tenantContext) {
+        return;
+      }
+
+      const allowed = await requirePermission(store, request, reply, "api_keys:revoke", {
+        tenantId: request.tenantContext.tenant.id,
+        entityType: "api_key",
+        entityId: request.params.apiKeyId
+      });
+
+      if (!allowed) {
+        return;
+      }
+
+      const apiKey = await apiKeyRepository.revoke(
+        request.tenantContext.tenant.id,
+        request.params.apiKeyId
+      );
+
+      if (!apiKey) {
+        return reply.code(404).send({ error: "api_key_not_found" });
+      }
+
+      appendAuditEvent(store, request, {
+        action: "api_key.revoked",
+        entityType: "api_key",
+        entityId: apiKey.id,
+        result: "success",
+        metadata: {
+          keyPrefix: apiKey.keyPrefix
+        }
+      });
+
+      return { apiKey: toApiKeyResponse(apiKey) };
+    }
+  );
+
   app.post<{
     Body: {
       documentId?: string;
@@ -843,6 +984,80 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       },
       shareLink: toShareLinkResponse(usedShareLink ?? shareLink)
     };
+  });
+
+  app.get("/api/v1/documents", async (request, reply) => {
+    const apiAuth = await requireApiKey(store, apiKeyRepository, request, reply, "documents:read");
+
+    if (!apiAuth) {
+      return;
+    }
+
+    const documents = await documentRepository.list({
+      tenantId: apiAuth.apiKey.tenantId,
+      role: "owner"
+    });
+    appendApiKeyAuditEvent(store, request, apiAuth.apiKey, "api.documents.list", "success", {
+      count: documents.length
+    });
+
+    return { documents: documents.map(toDocumentResponse) };
+  });
+
+  app.post<{
+    Body: {
+      title?: string;
+      projectId?: string;
+      classification?: DocumentClassification;
+    };
+  }>("/api/v1/documents", async (request, reply) => {
+    const apiAuth = await requireApiKey(store, apiKeyRepository, request, reply, "documents:write");
+
+    if (!apiAuth) {
+      return;
+    }
+
+    const title = normalizeName(request.body.title);
+    const projectId = request.body.projectId;
+    const classification = request.body.classification ?? "confidential";
+
+    if (!title) {
+      return reply.code(400).send({ error: "document_title_required" });
+    }
+
+    if (!projectId) {
+      return reply.code(400).send({ error: "project_required" });
+    }
+
+    if (!isDocumentClassification(classification)) {
+      return reply.code(400).send({ error: "invalid_classification" });
+    }
+
+    const project = await projectRepository.findVisibleById(
+      {
+        tenantId: apiAuth.apiKey.tenantId,
+        role: "owner"
+      },
+      projectId
+    );
+
+    if (!project) {
+      return reply.code(404).send({ error: "project_not_found" });
+    }
+
+    const document = await documentRepository.create({
+      tenantId: apiAuth.apiKey.tenantId,
+      projectId,
+      title,
+      classification,
+      createdBy: apiAuth.apiKey.id
+    });
+    appendApiKeyAuditEvent(store, request, apiAuth.apiKey, "api.documents.created", "success", {
+      documentId: document.id,
+      projectId: document.projectId
+    });
+
+    return reply.code(201).send({ document: toDocumentResponse(document) });
   });
 
   app.get("/documents", async (request, reply) => {
@@ -1423,6 +1638,87 @@ function appendPublicShareLinkAuditEvent(
   });
 }
 
+async function requireApiKey(
+  store: AppStore,
+  apiKeyRepository: ApiKeyRepository,
+  request: FastifyRequest,
+  reply: Parameters<typeof requirePermission>[2],
+  requiredScope: ApiKeyScope
+): Promise<{ apiKey: ApiKey } | undefined> {
+  const authorization = request.headers.authorization;
+  const key = authorization?.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : undefined;
+
+  if (!key) {
+    await reply.code(401).send({ error: "api_key_required" });
+    return undefined;
+  }
+
+  const tenantId = parseApiKeyTenantId(key);
+  const apiKey = await apiKeyRepository.findByHash(hashSecret(key), tenantId);
+
+  if (!apiKey) {
+    await reply.code(401).send({ error: "api_key_invalid" });
+    return undefined;
+  }
+
+  if (apiKey.revokedAt) {
+    appendApiKeyAuditEvent(store, request, apiKey, "api_key.denied", "failure", {
+      reason: "revoked",
+      requiredScope
+    });
+    await reply.code(401).send({ error: "api_key_revoked" });
+    return undefined;
+  }
+
+  if (apiKey.expiresAt && apiKey.expiresAt <= new Date()) {
+    appendApiKeyAuditEvent(store, request, apiKey, "api_key.denied", "failure", {
+      reason: "expired",
+      requiredScope
+    });
+    await reply.code(401).send({ error: "api_key_expired" });
+    return undefined;
+  }
+
+  if (!apiKey.scopes.includes(requiredScope)) {
+    appendApiKeyAuditEvent(store, request, apiKey, "api_key.denied", "failure", {
+      reason: "scope_missing",
+      requiredScope
+    });
+    await reply.code(403).send({ error: "api_key_scope_denied" });
+    return undefined;
+  }
+
+  await apiKeyRepository.markUsed(apiKey.tenantId, apiKey.id);
+
+  return { apiKey };
+}
+
+function appendApiKeyAuditEvent(
+  store: AppStore,
+  request: FastifyRequest,
+  apiKey: ApiKey,
+  action: string,
+  result: "success" | "failure",
+  metadata: Record<string, unknown>
+): void {
+  store.auditEvents.push({
+    id: `audit_${randomUUID()}`,
+    tenantId: apiKey.tenantId,
+    actorType: "api_key",
+    action,
+    entityType: "api_key",
+    entityId: apiKey.id,
+    result,
+    ipHash: hashSecret(request.ip),
+    userAgent: request.headers["user-agent"] ?? "unknown",
+    metadata: redactAuditMetadata({
+      keyPrefix: apiKey.keyPrefix,
+      ...metadata
+    }),
+    createdAt: new Date()
+  });
+}
+
 function isDocumentClassification(value: string): value is DocumentClassification {
   return (
     value === "public" ||
@@ -1544,6 +1840,32 @@ function toShareLinkResponse(shareLink: {
   };
 }
 
+function toApiKeyResponse(apiKey: {
+  id: string;
+  tenantId: string;
+  name: string;
+  keyPrefix: string;
+  scopes: ApiKeyScope[];
+  expiresAt?: Date;
+  lastUsedAt?: Date;
+  revokedAt?: Date;
+  createdBy: string;
+  createdAt: Date;
+}) {
+  return {
+    id: apiKey.id,
+    tenantId: apiKey.tenantId,
+    name: apiKey.name,
+    keyPrefix: apiKey.keyPrefix,
+    scopes: apiKey.scopes,
+    ...(apiKey.expiresAt ? { expiresAt: apiKey.expiresAt.toISOString() } : {}),
+    ...(apiKey.lastUsedAt ? { lastUsedAt: apiKey.lastUsedAt.toISOString() } : {}),
+    ...(apiKey.revokedAt ? { revokedAt: apiKey.revokedAt.toISOString() } : {}),
+    createdBy: apiKey.createdBy,
+    createdAt: apiKey.createdAt.toISOString()
+  };
+}
+
 function decodeBase64(value: string): Buffer | undefined {
   try {
     const buffer = Buffer.from(value, "base64");
@@ -1594,6 +1916,32 @@ function parseShareTokenTenantId(token: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function createApiKeyValue(tenantId: string): string {
+  return `tv_live_${Buffer.from(tenantId, "utf8").toString("base64url")}.${randomBytes(32).toString("base64url")}`;
+}
+
+function parseApiKeyTenantId(apiKey: string): string | undefined {
+  if (!apiKey.startsWith("tv_live_")) {
+    return undefined;
+  }
+
+  const [tenantHint] = apiKey.slice("tv_live_".length).split(".");
+
+  if (!tenantHint) {
+    return undefined;
+  }
+
+  try {
+    return Buffer.from(tenantHint, "base64url").toString("utf8") || undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function isApiKeyScope(scope: string): scope is ApiKeyScope {
+  return scope === "documents:read" || scope === "documents:write" || scope === "audit:read";
 }
 
 function clampInteger(value: number, min: number, max: number): number {

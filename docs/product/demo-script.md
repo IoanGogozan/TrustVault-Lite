@@ -22,11 +22,14 @@ This is the main portfolio or interview demo scenario.
 16. The API returns `403`.
 17. The audit viewer shows the authorization denial.
 18. Create an API key with only the `documents:read` scope.
-19. Try `DELETE /api/v1/documents/:id` with that key.
-20. The API returns `403`.
-21. Revoke the key.
-22. Show the complete audit log.
-23. Show the CI pipeline with security checks.
+19. Show that the full key is displayed only once and list responses expose only the prefix.
+20. Call `GET /api/v1/documents` with the key and show tenant-scoped results.
+21. Try `POST /api/v1/documents` with the read-only key.
+22. The API returns `403`.
+23. Revoke the key.
+24. Show that later API use is rejected.
+25. Show the complete audit log.
+26. Show the CI pipeline with security checks.
 
 ## Presentation Message
 

@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   FileUp,
   FolderPlus,
+  Key,
   KeyRound,
   Link2,
   LockKeyhole,
@@ -76,6 +77,21 @@ type ShareLink = {
   createdAt: string;
 };
 
+type ApiKeyScope = "documents:read" | "documents:write" | "audit:read";
+
+type ApiKeyRecord = {
+  id: string;
+  tenantId: string;
+  name: string;
+  keyPrefix: string;
+  scopes: ApiKeyScope[];
+  expiresAt?: string;
+  lastUsedAt?: string;
+  revokedAt?: string;
+  createdBy: string;
+  createdAt: string;
+};
+
 type DownloadMetadata = {
   documentId: string;
   versionId: string;
@@ -103,13 +119,16 @@ export default function Home() {
   const [projectName, setProjectName] = useState("Vendor Evidence");
   const [projectClassification, setProjectClassification] = useState<Classification>("internal");
   const [documentTitle, setDocumentTitle] = useState("Vendor Security Review");
+  const [apiKeyName, setApiKeyName] = useState("Portfolio Read Integration");
   const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>();
   const [projects, setProjects] = useState<Project[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [shareLinks, setShareLinks] = useState<ShareLink[]>([]);
+  const [apiKeys, setApiKeys] = useState<ApiKeyRecord[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [downloadMetadata, setDownloadMetadata] = useState<DownloadMetadata | undefined>();
   const [lastShareToken, setLastShareToken] = useState<string | undefined>();
+  const [lastApiKey, setLastApiKey] = useState<string | undefined>();
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
 
   const selectedMembership = useMemo(
@@ -155,10 +174,12 @@ export default function Home() {
   }
 
   async function refreshWorkspace(tenantId: string) {
-    const [projectResponse, documentResponse, shareLinkResponse, auditResponse] = await Promise.all([
+    const [projectResponse, documentResponse, shareLinkResponse, apiKeyResponse, auditResponse] =
+      await Promise.all([
       apiGet<{ projects: Project[] }>("/projects", tenantId),
       apiGet<{ documents: DocumentRecord[] }>("/documents", tenantId),
       apiGet<{ shareLinks: ShareLink[] }>("/share-links", tenantId),
+      apiGet<{ apiKeys: ApiKeyRecord[] }>("/api-keys", tenantId),
       apiGet<{ auditEvents: AuditEvent[] }>("/audit-events", tenantId)
     ]);
 
@@ -173,6 +194,10 @@ export default function Home() {
 
     if (shareLinkResponse) {
       setShareLinks(shareLinkResponse.shareLinks);
+    }
+
+    if (apiKeyResponse) {
+      setApiKeys(apiKeyResponse.apiKeys);
     }
 
     setAuditEvents(auditResponse?.auditEvents ?? []);
@@ -366,6 +391,68 @@ export default function Home() {
     await refreshWorkspace(selectedMembership.tenantId);
   }
 
+  async function handleCreateApiKey(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!selectedMembership) {
+      return;
+    }
+
+    const response = await apiPost<{ apiKey: ApiKeyRecord; key: string }>(
+      "/api-keys",
+      selectedMembership.tenantId,
+      {
+        name: apiKeyName,
+        scopes: ["documents:read"],
+        expiresInDays: 30
+      }
+    );
+
+    if (!response) {
+      setStatusMessage("API key could not be created");
+      return;
+    }
+
+    setLastApiKey(response.key);
+    setStatusMessage("API key created");
+    await refreshWorkspace(selectedMembership.tenantId);
+  }
+
+  async function handleUseApiKey() {
+    if (!lastApiKey || !selectedMembership) {
+      return;
+    }
+
+    const response = await fetch(`${apiBaseUrl}/api/v1/documents`, {
+      headers: { Authorization: `Bearer ${lastApiKey}` }
+    });
+
+    if (!response.ok) {
+      setStatusMessage("API key request failed");
+      await refreshWorkspace(selectedMembership.tenantId);
+      return;
+    }
+
+    setStatusMessage("External API request succeeded");
+    await refreshWorkspace(selectedMembership.tenantId);
+  }
+
+  async function handleRevokeApiKey(apiKeyId: string) {
+    if (!selectedMembership) {
+      return;
+    }
+
+    const response = await apiDelete(`/api-keys/${apiKeyId}`, selectedMembership.tenantId);
+
+    if (!response) {
+      setStatusMessage("API key could not be revoked");
+      return;
+    }
+
+    setStatusMessage("API key revoked");
+    await refreshWorkspace(selectedMembership.tenantId);
+  }
+
   async function apiGet<T>(path: string, tenantId: string): Promise<T | undefined> {
     const response = await fetch(`${apiBaseUrl}${path}`, {
       credentials: "include",
@@ -464,6 +551,10 @@ export default function Home() {
           <a className="nav-item" href="#audit">
             <Activity aria-hidden="true" />
             Audit
+          </a>
+          <a className="nav-item" href="#api-keys">
+            <Key aria-hidden="true" />
+            API keys
           </a>
           <a className="nav-item" href="#organization">
             <Building2 aria-hidden="true" />
@@ -680,6 +771,55 @@ export default function Home() {
                     type="button"
                     disabled={Boolean(shareLink.revokedAt)}
                     onClick={() => void handleRevokeShareLink(shareLink.id)}
+                  >
+                    Revoke
+                  </button>
+                </div>
+              ))}
+            </div>
+          </article>
+
+          <article className="panel" id="api-keys">
+            <div className="panel-heading">
+              <h2>API keys</h2>
+              <Key aria-hidden="true" />
+            </div>
+            <form className="stack-form" onSubmit={handleCreateApiKey}>
+              <label className="field">
+                <span>Key name</span>
+                <input
+                  value={apiKeyName}
+                  onChange={(event) => setApiKeyName(event.target.value)}
+                />
+              </label>
+              <button className="secondary-action" type="submit">
+                <Key aria-hidden="true" />
+                Create read key
+              </button>
+            </form>
+            {lastApiKey ? (
+              <div className="token-box">
+                <span>One-time API key</span>
+                <code>{lastApiKey}</code>
+                <button className="compact-action" type="button" onClick={() => void handleUseApiKey()}>
+                  Call external API
+                </button>
+              </div>
+            ) : null}
+            <div className="record-list">
+              {apiKeys.map((apiKey) => (
+                <div className="record-row passive document-row" key={apiKey.id}>
+                  <div>
+                    <span>{apiKey.name}</span>
+                    <small>
+                      {apiKey.keyPrefix} · {apiKey.scopes.join(", ")}
+                    </small>
+                  </div>
+                  <button
+                    className="compact-action"
+                    type="button"
+                    disabled={Boolean(apiKey.revokedAt)}
+                    onClick={() => void handleRevokeApiKey(apiKey.id)}
                   >
                     Revoke
                   </button>

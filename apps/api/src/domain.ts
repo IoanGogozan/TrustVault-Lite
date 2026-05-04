@@ -99,6 +99,22 @@ export type ShareLink = {
   createdAt: Date;
 };
 
+export type ApiKeyScope = "documents:read" | "documents:write" | "audit:read";
+
+export type ApiKey = {
+  id: string;
+  tenantId: string;
+  name: string;
+  keyPrefix: string;
+  keyHash: string;
+  scopes: ApiKeyScope[];
+  expiresAt?: Date;
+  lastUsedAt?: Date;
+  revokedAt?: Date;
+  createdBy: string;
+  createdAt: Date;
+};
+
 export type Session = {
   id: string;
   userId: string;
@@ -128,6 +144,7 @@ export type AppStore = {
   documentVersions: DocumentVersion[];
   scanJobs: ScanJob[];
   shareLinks: ShareLink[];
+  apiKeys: ApiKey[];
   storageObjects: Record<string, string>;
   invitations: Invitation[];
   auditEvents: AuditEvent[];
@@ -345,6 +362,7 @@ export function createDemoStore(): AppStore {
     ],
     scanJobs: [],
     shareLinks: [],
+    apiKeys: [],
     storageObjects: {},
     invitations: [],
     auditEvents: [],

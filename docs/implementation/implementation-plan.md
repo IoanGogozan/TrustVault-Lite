@@ -184,7 +184,9 @@ Implementation note:
 
 ## Phase 6: API Keys and External API
 
-Tasks:
+Status: implemented for the current demo scope.
+
+Completed:
 
 - Generate API keys with prefix.
 - Display the full key only once.
@@ -192,6 +194,17 @@ Tasks:
 - Add scopes.
 - Add expiry.
 - Add revoke.
+- Add scoped external document APIs.
+- Track `last_used_at`.
+- Reject revoked and expired keys.
+- Audit successful and denied API key usage.
+
+Implementation note:
+
+- Details are documented in `docs/implementation/phase-6-api-keys.md`.
+
+Remaining hardening:
+
 - Add rate limits.
 - Add OpenAPI spec.
 
