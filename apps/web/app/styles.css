@@ -30,6 +30,11 @@ input {
   font: inherit;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
 .login-shell {
   min-height: 100vh;
   display: grid;
@@ -97,6 +102,7 @@ input {
 .secondary-action {
   min-height: 38px;
   padding: 0 14px;
+  gap: 8px;
   color: var(--accent-strong);
   background: var(--surface-muted);
   border: 1px solid #b8ccc5;
@@ -176,7 +182,8 @@ input {
 }
 
 .topbar select,
-.field input {
+.field input,
+.field select {
   min-width: 190px;
   height: 38px;
   border: 1px solid var(--line);
@@ -280,6 +287,89 @@ input {
   padding-left: 18px;
   color: var(--muted);
   line-height: 1.6;
+}
+
+.record-list,
+.audit-list {
+  display: grid;
+  gap: 8px;
+}
+
+.record-row,
+.audit-row {
+  min-height: 46px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  background: #fbfcfc;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text);
+  text-align: left;
+}
+
+.record-row {
+  cursor: pointer;
+}
+
+.record-row:hover {
+  border-color: #9fbab3;
+}
+
+.record-row.passive {
+  cursor: default;
+}
+
+.record-row span,
+.audit-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.record-row strong {
+  flex: 0 0 auto;
+  color: #315c9a;
+  font-size: 0.82rem;
+}
+
+.audit-row {
+  justify-content: start;
+}
+
+.audit-row div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+  flex: 1;
+}
+
+.audit-row span,
+.audit-row time {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.result-dot {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--warning);
+}
+
+.result-dot.success {
+  background: var(--accent);
+}
+
+.result-dot.failure {
+  background: #b42318;
+}
+
+.details.compact {
+  margin-top: 18px;
 }
 
 .stack-form {

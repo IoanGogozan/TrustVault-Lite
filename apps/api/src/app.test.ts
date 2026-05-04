@@ -645,7 +645,8 @@ describe("phase 1 auth and tenant foundation", () => {
   });
 
   it("allows members to create documents but ignores tenant mass assignment", async () => {
-    const app = buildApp({ store: createDemoStore() });
+    const store = createDemoStore();
+    const app = buildApp({ store });
     const cookie = await login(app, "member@acme.test");
 
     const response = await app.inject({
@@ -668,6 +669,16 @@ describe("phase 1 auth and tenant foundation", () => {
       projectId: "project_acme_soc2"
     });
     expect(response.json().document).not.toHaveProperty("storageKey");
+    expect(store.auditEvents.at(-1)).toMatchObject({
+      action: "document.created",
+      entityType: "document",
+      entityId: response.json().document.id,
+      result: "success",
+      metadata: expect.objectContaining({
+        projectId: "project_acme_soc2",
+        classification: "confidential"
+      })
+    });
   });
 
   it("denies document deletion for members", async () => {
@@ -753,6 +764,61 @@ describe("phase 1 auth and tenant foundation", () => {
       entityType: "document",
       entityId: "document_acme_policy",
       result: "success"
+    });
+  });
+
+  it("allows auditors to view tenant audit events without transport metadata", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const ownerCookie = await login(app, "owner@acme.test");
+    const auditorCookie = await login(app, "auditor@acme.test");
+
+    await app.inject({
+      method: "DELETE",
+      url: "/documents/document_acme_policy",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/audit-events",
+      headers: { cookie: auditorCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json().auditEvents).toEqual([
+      expect.objectContaining({
+        tenantId: "tenant_acme",
+        actorType: "user",
+        action: "document.deleted",
+        entityType: "document",
+        entityId: "document_acme_policy",
+        result: "success"
+      })
+    ]);
+    expect(response.json().auditEvents[0]).not.toHaveProperty("ipHash");
+    expect(response.json().auditEvents[0]).not.toHaveProperty("userAgent");
+  });
+
+  it("denies audit event reads for members", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const cookie = await login(app, "member@acme.test");
+
+    const response = await app.inject({
+      method: "GET",
+      url: "/audit-events",
+      headers: { cookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(store.auditEvents.at(-1)).toMatchObject({
+      action: "authorization.denied",
+      entityType: "audit_event",
+      result: "failure",
+      metadata: expect.objectContaining({
+        requestedAction: "audit:read"
+      })
     });
   });
 
@@ -1003,6 +1069,64 @@ describe("phase 1 auth and tenant foundation", () => {
     });
 
     expect(download.statusCode).toBe(409);
+  });
+
+  it("runs the project document upload scan lifecycle and exposes generated audit events", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const ownerCookie = await login(app, "owner@acme.test");
+
+    const projectResponse = await app.inject({
+      method: "POST",
+      url: "/projects",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        name: "Lifecycle Evidence",
+        classification: "internal"
+      }
+    });
+    const projectId = projectResponse.json().project.id;
+
+    const documentResponse = await app.inject({
+      method: "POST",
+      url: "/documents",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        title: "Lifecycle Report",
+        projectId,
+        classification: "confidential"
+      }
+    });
+    const documentId = documentResponse.json().document.id;
+
+    await app.inject({
+      method: "POST",
+      url: `/documents/${documentId}/versions`,
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" },
+      payload: pdfUploadPayload()
+    });
+    await app.inject({
+      method: "POST",
+      url: "/internal/scan-jobs/process-next",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    const auditResponse = await app.inject({
+      method: "GET",
+      url: "/audit-events",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(auditResponse.statusCode).toBe(200);
+    expect(auditResponse.json().auditEvents.map((event: { action: string }) => event.action)).toEqual(
+      expect.arrayContaining([
+        "project.created",
+        "document.created",
+        "document.uploaded",
+        "document.scan_queued",
+        "document.scan_clean"
+      ])
+    );
   });
 });
 

@@ -437,6 +437,31 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     };
   });
 
+  app.get("/audit-events", async (request, reply) => {
+    await requireTenantContext(store, request, reply);
+
+    if (!request.tenantContext) {
+      return;
+    }
+
+    const allowed = await requirePermission(store, request, reply, "audit:read", {
+      tenantId: request.tenantContext.tenant.id,
+      entityType: "audit_event"
+    });
+
+    if (!allowed) {
+      return;
+    }
+
+    return {
+      auditEvents: store.auditEvents
+        .filter((event) => event.tenantId === request.tenantContext?.tenant.id)
+        .sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime())
+        .slice(0, 50)
+        .map(toAuditEventResponse)
+    };
+  });
+
   app.post<{
     Body: { email?: string; role?: MembershipRole };
   }>("/tenant/invitations", async (request, reply) => {
@@ -636,6 +661,16 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       title,
       classification,
       createdBy: request.tenantContext.user.id
+    });
+    appendAuditEvent(store, request, {
+      action: "document.created",
+      entityType: "document",
+      entityId: document.id,
+      result: "success",
+      metadata: {
+        projectId: document.projectId,
+        classification: document.classification
+      }
     });
 
     return reply.code(201).send({ document: toDocumentResponse(document) });
@@ -1161,6 +1196,32 @@ function toDocumentVersionResponse(version: {
     sha256: version.sha256,
     scanStatus: version.scanStatus,
     createdAt: version.createdAt.toISOString()
+  };
+}
+
+function toAuditEventResponse(event: {
+  id: string;
+  tenantId: string;
+  actorUserId?: string;
+  actorType: string;
+  action: string;
+  entityType: string;
+  entityId?: string;
+  result: string;
+  metadata: Record<string, unknown>;
+  createdAt: Date;
+}) {
+  return {
+    id: event.id,
+    tenantId: event.tenantId,
+    actorType: event.actorType,
+    ...(event.actorUserId ? { actorUserId: event.actorUserId } : {}),
+    action: event.action,
+    entityType: event.entityType,
+    ...(event.entityId ? { entityId: event.entityId } : {}),
+    result: event.result,
+    metadata: event.metadata,
+    createdAt: event.createdAt.toISOString()
   };
 }
 

@@ -4,15 +4,19 @@ import {
   Activity,
   Building2,
   CheckCircle2,
+  FileUp,
+  FolderPlus,
   KeyRound,
   LockKeyhole,
   LogOut,
+  Play,
   ShieldCheck,
   UserRound
 } from "lucide-react";
-import { type FormEvent, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useState } from "react";
 
 type Role = "owner" | "admin" | "member" | "viewer" | "auditor";
+type Classification = "public" | "internal" | "confidential" | "restricted";
 
 type Membership = {
   tenantId: string;
@@ -23,41 +27,62 @@ type Membership = {
 };
 
 type CurrentUser = {
+  id: string;
   name: string;
   email: string;
   memberships: Membership[];
 };
 
-const securitySignals = [
-  {
-    label: "Secure session",
-    value: "HttpOnly cookie",
-    icon: LockKeyhole
-  },
-  {
-    label: "Tenant context",
-    value: "Membership verified",
-    icon: Building2
-  },
-  {
-    label: "MFA policy",
-    value: "Required",
-    icon: ShieldCheck
-  },
-  {
-    label: "Audit trail",
-    value: "Enabled",
-    icon: Activity
-  }
-];
+type Project = {
+  id: string;
+  tenantId: string;
+  name: string;
+  classification: Classification;
+  createdBy: string;
+  createdAt: string;
+};
+
+type DocumentRecord = {
+  id: string;
+  tenantId: string;
+  projectId: string;
+  title: string;
+  classification: Classification;
+  createdBy: string;
+  createdAt: string;
+};
+
+type AuditEvent = {
+  id: string;
+  action: string;
+  entityType: string;
+  entityId?: string;
+  actorType: string;
+  result: "success" | "failure";
+  createdAt: string;
+};
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+
+const securitySignals = [
+  { label: "Session", value: "HttpOnly", icon: LockKeyhole },
+  { label: "Tenant", value: "Scoped", icon: Building2 },
+  { label: "Files", value: "Private", icon: ShieldCheck },
+  { label: "Audit", value: "Live", icon: Activity }
+];
 
 export default function Home() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | undefined>();
   const [selectedTenantId, setSelectedTenantId] = useState<string | undefined>();
   const [loginEmail, setLoginEmail] = useState("owner@acme.test");
   const [tenantName, setTenantName] = useState("");
+  const [projectName, setProjectName] = useState("Vendor Evidence");
+  const [projectClassification, setProjectClassification] = useState<Classification>("internal");
+  const [documentTitle, setDocumentTitle] = useState("Vendor Security Review");
+  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>();
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [documents, setDocuments] = useState<DocumentRecord[]>([]);
+  const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
 
   const selectedMembership = useMemo(
@@ -66,6 +91,17 @@ export default function Home() {
       currentUser?.memberships[0],
     [currentUser?.memberships, selectedTenantId]
   );
+
+  useEffect(() => {
+    if (!selectedMembership) {
+      setProjects([]);
+      setDocuments([]);
+      setAuditEvents([]);
+      return;
+    }
+
+    void refreshWorkspace(selectedMembership.tenantId);
+  }, [selectedMembership?.tenantId]);
 
   async function refreshCurrentUser() {
     const response = await fetch(`${apiBaseUrl}/me`, {
@@ -89,6 +125,25 @@ export default function Home() {
 
     setCurrentUser(nextUser);
     setSelectedTenantId((currentTenantId) => currentTenantId ?? nextUser.memberships[0]?.tenantId);
+  }
+
+  async function refreshWorkspace(tenantId: string) {
+    const [projectResponse, documentResponse, auditResponse] = await Promise.all([
+      apiGet<{ projects: Project[] }>("/projects", tenantId),
+      apiGet<{ documents: DocumentRecord[] }>("/documents", tenantId),
+      apiGet<{ auditEvents: AuditEvent[] }>("/audit-events", tenantId)
+    ]);
+
+    if (projectResponse) {
+      setProjects(projectResponse.projects);
+      setSelectedProjectId((currentProjectId) => currentProjectId ?? projectResponse.projects[0]?.id);
+    }
+
+    if (documentResponse) {
+      setDocuments(documentResponse.documents);
+    }
+
+    setAuditEvents(auditResponse?.auditEvents ?? []);
   }
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
@@ -138,6 +193,86 @@ export default function Home() {
     setTenantName("");
     await refreshCurrentUser();
     setStatusMessage("Organization created");
+  }
+
+  async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!selectedMembership) {
+      return;
+    }
+
+    const response = await apiPost<{ project: Project }>("/projects", selectedMembership.tenantId, {
+      name: projectName,
+      classification: projectClassification
+    });
+
+    if (!response) {
+      setStatusMessage("Project could not be created");
+      return;
+    }
+
+    setSelectedProjectId(response.project.id);
+    setStatusMessage("Project created");
+    await refreshWorkspace(selectedMembership.tenantId);
+  }
+
+  async function handleCreateDocument(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!selectedMembership || !selectedProjectId) {
+      return;
+    }
+
+    const documentResponse = await apiPost<{ document: DocumentRecord }>(
+      "/documents",
+      selectedMembership.tenantId,
+      {
+        title: documentTitle,
+        projectId: selectedProjectId,
+        classification: "confidential"
+      }
+    );
+
+    if (!documentResponse) {
+      setStatusMessage("Document could not be created");
+      return;
+    }
+
+    const content = "%PDF-demo evidence";
+    await apiPost(`/documents/${documentResponse.document.id}/versions`, selectedMembership.tenantId, {
+      originalFilename: "vendor-evidence.pdf",
+      mimeType: "application/pdf",
+      sizeBytes: content.length,
+      contentBase64: btoa(content)
+    });
+    await apiPost("/internal/scan-jobs/process-next", selectedMembership.tenantId, {});
+
+    setStatusMessage("Document uploaded");
+    await refreshWorkspace(selectedMembership.tenantId);
+  }
+
+  async function apiGet<T>(path: string, tenantId: string): Promise<T | undefined> {
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      credentials: "include",
+      headers: { "X-Tenant-Id": tenantId }
+    });
+
+    return response.ok ? ((await response.json()) as T) : undefined;
+  }
+
+  async function apiPost<T>(path: string, tenantId: string, body: unknown): Promise<T | undefined> {
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      method: "POST",
+      credentials: "include",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Tenant-Id": tenantId
+      },
+      body: JSON.stringify(body)
+    });
+
+    return response.ok ? ((await response.json()) as T) : undefined;
   }
 
   if (!currentUser) {
@@ -198,13 +333,13 @@ export default function Home() {
           <span>TrustVault</span>
         </div>
         <nav>
-          <a className="nav-item active" href="#overview">
-            <Activity aria-hidden="true" />
-            Overview
+          <a className="nav-item active" href="#evidence">
+            <FileUp aria-hidden="true" />
+            Evidence
           </a>
-          <a className="nav-item" href="#members">
-            <UserRound aria-hidden="true" />
-            Members
+          <a className="nav-item" href="#audit">
+            <Activity aria-hidden="true" />
+            Audit
           </a>
           <a className="nav-item" href="#organization">
             <Building2 aria-hidden="true" />
@@ -256,42 +391,131 @@ export default function Home() {
           })}
         </section>
 
-        <section className="content-grid">
-          <article className="panel" id="overview">
+        <section className="content-grid" id="evidence">
+          <article className="panel">
             <div className="panel-heading">
-              <h2>Current access</h2>
-              <CheckCircle2 aria-hidden="true" />
+              <h2>Create project</h2>
+              <FolderPlus aria-hidden="true" />
             </div>
-            <dl className="details">
-              <div>
-                <dt>User</dt>
-                <dd>{currentUser.name}</dd>
-              </div>
-              <div>
-                <dt>Email</dt>
-                <dd>{currentUser.email}</dd>
-              </div>
-              <div>
-                <dt>Role</dt>
-                <dd>{formatRole(selectedMembership.role)}</dd>
-              </div>
-              <div>
-                <dt>Tenant slug</dt>
-                <dd>{selectedMembership.tenantSlug}</dd>
-              </div>
-            </dl>
+            <form className="stack-form" onSubmit={handleCreateProject}>
+              <label className="field">
+                <span>Project name</span>
+                <input
+                  value={projectName}
+                  onChange={(event) => setProjectName(event.target.value)}
+                />
+              </label>
+              <label className="field">
+                <span>Classification</span>
+                <select
+                  value={projectClassification}
+                  onChange={(event) =>
+                    setProjectClassification(event.target.value as Classification)
+                  }
+                >
+                  <option value="public">Public</option>
+                  <option value="internal">Internal</option>
+                  <option value="confidential">Confidential</option>
+                  <option value="restricted">Restricted</option>
+                </select>
+              </label>
+              <button className="secondary-action" type="submit">
+                <FolderPlus aria-hidden="true" />
+                Create project
+              </button>
+            </form>
           </article>
 
-          <article className="panel" id="members">
+          <article className="panel">
             <div className="panel-heading">
-              <h2>Membership controls</h2>
-              <UserRound aria-hidden="true" />
+              <h2>Upload document</h2>
+              <FileUp aria-hidden="true" />
             </div>
-            <ul className="control-list">
-              <li>Active membership required before tenant context is accepted.</li>
-              <li>Foreign tenant selection returns `403` in the API foundation.</li>
-              <li>MFA requirement is visible per tenant membership.</li>
-            </ul>
+            <form className="stack-form" onSubmit={handleCreateDocument}>
+              <label className="field">
+                <span>Project</span>
+                <select
+                  value={selectedProjectId ?? ""}
+                  onChange={(event) => setSelectedProjectId(event.target.value)}
+                >
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="field">
+                <span>Document title</span>
+                <input
+                  value={documentTitle}
+                  onChange={(event) => setDocumentTitle(event.target.value)}
+                />
+              </label>
+              <button className="secondary-action" type="submit" disabled={!selectedProjectId}>
+                <FileUp aria-hidden="true" />
+                Upload PDF
+              </button>
+              {statusMessage ? <p className="status-message">{statusMessage}</p> : null}
+            </form>
+          </article>
+        </section>
+
+        <section className="content-grid">
+          <article className="panel">
+            <div className="panel-heading">
+              <h2>Projects</h2>
+              <Building2 aria-hidden="true" />
+            </div>
+            <div className="record-list">
+              {projects.map((project) => (
+                <button
+                  className="record-row"
+                  key={project.id}
+                  type="button"
+                  onClick={() => setSelectedProjectId(project.id)}
+                >
+                  <span>{project.name}</span>
+                  <strong>{formatClassification(project.classification)}</strong>
+                </button>
+              ))}
+            </div>
+          </article>
+
+          <article className="panel">
+            <div className="panel-heading">
+              <h2>Documents</h2>
+              <CheckCircle2 aria-hidden="true" />
+            </div>
+            <div className="record-list">
+              {documents.map((document) => (
+                <div className="record-row passive" key={document.id}>
+                  <span>{document.title}</span>
+                  <strong>{formatClassification(document.classification)}</strong>
+                </div>
+              ))}
+            </div>
+          </article>
+        </section>
+
+        <section className="content-grid">
+          <article className="panel" id="audit">
+            <div className="panel-heading">
+              <h2>Audit events</h2>
+              <Activity aria-hidden="true" />
+            </div>
+            <div className="audit-list">
+              {auditEvents.map((event) => (
+                <div className="audit-row" key={event.id}>
+                  <span className={`result-dot ${event.result}`} />
+                  <div>
+                    <strong>{event.action}</strong>
+                    <span>{event.entityType}</span>
+                  </div>
+                  <time>{new Date(event.createdAt).toLocaleTimeString()}</time>
+                </div>
+              ))}
+            </div>
           </article>
 
           <article className="panel" id="organization">
@@ -309,10 +533,20 @@ export default function Home() {
                 />
               </label>
               <button className="secondary-action" type="submit">
+                <Play aria-hidden="true" />
                 Create
               </button>
-              {statusMessage ? <p className="status-message">{statusMessage}</p> : null}
             </form>
+            <dl className="details compact">
+              <div>
+                <dt>User</dt>
+                <dd>{currentUser.name}</dd>
+              </div>
+              <div>
+                <dt>Role</dt>
+                <dd>{formatRole(selectedMembership.role)}</dd>
+              </div>
+            </dl>
           </article>
         </section>
       </section>
@@ -325,4 +559,8 @@ function formatRole(role: Role): string {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function formatClassification(classification: Classification): string {
+  return classification.charAt(0).toUpperCase() + classification.slice(1);
 }
