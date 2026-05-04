@@ -50,6 +50,17 @@ export type BuildAppOptions = {
   apiKeyRepository?: ApiKeyRepository;
   scanQueue?: ScanJobQueue;
   storage?: PrivateObjectStorage;
+  rateLimitStore?: RateLimitStore;
+};
+
+type RateLimitStore = Map<string, { count: number; resetAt: number }>;
+
+type RateLimitRule = {
+  name: string;
+  limit: number;
+  windowMs: number;
+  match: (request: FastifyRequest) => boolean;
+  key: (request: FastifyRequest) => string;
 };
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
@@ -63,6 +74,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const storage = options.storage ?? new InMemoryPrivateObjectStorage(store.storageObjects);
   const scanQueue =
     options.scanQueue ?? new InMemoryScanJobQueue(store, documentRepository, storage);
+  const rateLimitStore = options.rateLimitStore ?? new Map();
   const app = Fastify({
     logger: config.env === "production",
     bodyLimit: 1_000_000
@@ -77,6 +89,13 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       reply.header("Access-Control-Allow-Origin", origin);
       reply.header("Access-Control-Allow-Credentials", "true");
       reply.header("Vary", "Origin");
+    }
+
+    const rateLimitResult = applyRateLimit(rateLimitStore, request);
+
+    if (!rateLimitResult.allowed) {
+      reply.header("Retry-After", Math.ceil(rateLimitResult.retryAfterMs / 1000).toString());
+      return reply.code(429).send({ error: "rate_limit_exceeded" });
     }
 
     if (requiresCsrfCheck(request)) {
@@ -508,6 +527,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
     const limit = clampInteger(request.query.limit ?? 50, 1, 100);
     const action = normalizeName(request.query.action);
+
+    if (request.query.actorType && !isAuditActorType(request.query.actorType)) {
+      return reply.code(400).send({ error: "invalid_audit_actor_type" });
+    }
+
+    if (request.query.result && !isAuditResult(request.query.result)) {
+      return reply.code(400).send({ error: "invalid_audit_result" });
+    }
 
     const filters = {
       tenantId: request.tenantContext.tenant.id,
@@ -1599,6 +1626,73 @@ function requiresCsrfCheck(request: FastifyRequest): boolean {
   return !request.headers.authorization?.startsWith("Bearer ");
 }
 
+const rateLimitRules: RateLimitRule[] = [
+  {
+    name: "auth",
+    limit: 5,
+    windowMs: 60_000,
+    match: (request) => request.method === "POST" && request.url === "/auth/dev-login",
+    key: (request) => `auth:${request.ip}`
+  },
+  {
+    name: "api-keys",
+    limit: 20,
+    windowMs: 60_000,
+    match: (request) => request.url.startsWith("/api-keys"),
+    key: (request) => `api-keys:${request.ip}:${request.headers["x-tenant-id"] ?? "none"}`
+  },
+  {
+    name: "external-api",
+    limit: 60,
+    windowMs: 60_000,
+    match: (request) => request.url.startsWith("/api/v1/"),
+    key: (request) =>
+      `external-api:${request.headers.authorization ?? "anonymous"}:${request.ip}`
+  },
+  {
+    name: "share-links",
+    limit: 30,
+    windowMs: 60_000,
+    match: (request) =>
+      request.url.startsWith("/share-links") || request.url.startsWith("/public/share-links"),
+    key: (request) => `share-links:${request.ip}`
+  },
+  {
+    name: "uploads",
+    limit: 20,
+    windowMs: 60_000,
+    match: (request) => request.method === "POST" && /\/documents\/[^/]+\/versions/.test(request.url),
+    key: (request) => `uploads:${request.ip}:${request.headers["x-tenant-id"] ?? "none"}`
+  }
+];
+
+function applyRateLimit(
+  rateLimitStore: RateLimitStore,
+  request: FastifyRequest
+): { allowed: true } | { allowed: false; retryAfterMs: number } {
+  const rule = rateLimitRules.find((candidate) => candidate.match(request));
+
+  if (!rule) {
+    return { allowed: true };
+  }
+
+  const now = Date.now();
+  const key = `${rule.name}:${rule.key(request)}`;
+  const existing = rateLimitStore.get(key);
+
+  if (!existing || existing.resetAt <= now) {
+    rateLimitStore.set(key, { count: 1, resetAt: now + rule.windowMs });
+    return { allowed: true };
+  }
+
+  if (existing.count >= rule.limit) {
+    return { allowed: false, retryAfterMs: existing.resetAt - now };
+  }
+
+  existing.count += 1;
+  return { allowed: true };
+}
+
 function normalizeEmail(email: string | undefined): string | undefined {
   const normalized = email?.trim().toLowerCase();
 
@@ -2167,12 +2261,22 @@ function isApiKeyScope(scope: string): scope is ApiKeyScope {
   return scope === "documents:read" || scope === "documents:write" || scope === "audit:read";
 }
 
-function clampInteger(value: number, min: number, max: number): number {
-  if (!Number.isFinite(value)) {
+function isAuditActorType(value: string): value is AuditActorType {
+  return value === "user" || value === "api_key" || value === "system" || value === "support";
+}
+
+function isAuditResult(value: string): value is AuditResult {
+  return value === "success" || value === "failure";
+}
+
+function clampInteger(value: number | string, min: number, max: number): number {
+  const numericValue = typeof value === "string" ? Number(value) : value;
+
+  if (!Number.isFinite(numericValue)) {
     return min;
   }
 
-  return Math.min(Math.max(Math.trunc(value), min), max);
+  return Math.min(Math.max(Math.trunc(numericValue), min), max);
 }
 
 function findOrCreateInvitedUser(

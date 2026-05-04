@@ -249,6 +249,9 @@ Completed:
 - Add request body limits.
 - Add stable error responses without stack traces.
 - Send CSRF tokens from the web client for mutating session-backed requests.
+- Add demo rate limits for login, API keys, external API, share links, and uploads.
+- Add frontend CSP and browser security headers through Next.js config.
+- Validate audit query filters.
 - Keep existing output filtering for sensitive document, share-link, and API key fields.
 
 Implementation note:
@@ -257,8 +260,7 @@ Implementation note:
 
 Remaining hardening:
 
-- Add frontend CSP headers through Next.js middleware or hosting config.
-- Add rate limiting.
+- Replace in-memory rate limits with Redis-backed limits.
 - Expand schema validation across all request and query inputs.
 - Add structured logs with redaction.
 

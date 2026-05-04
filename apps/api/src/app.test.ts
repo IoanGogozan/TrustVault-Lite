@@ -125,6 +125,30 @@ describe("phase 1 auth and tenant foundation", () => {
     expect(response.body).not.toContain("stack");
   });
 
+  it("rate limits repeated login attempts", async () => {
+    const app = buildApp({ store: createDemoStore() });
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/auth/dev-login",
+        payload: { email: "missing-user@acme.test" }
+      });
+
+      expect(response.statusCode).toBe(401);
+    }
+
+    const limited = await app.inject({
+      method: "POST",
+      url: "/auth/dev-login",
+      payload: { email: "missing-user@acme.test" }
+    });
+
+    expect(limited.statusCode).toBe(429);
+    expect(limited.headers["retry-after"]).toBeDefined();
+    expect(limited.json()).toEqual({ error: "rate_limit_exceeded" });
+  });
+
   it("lists only active tenant memberships for the current user", async () => {
     const store = createDemoStore();
     const app = buildApp({ store });
@@ -1584,6 +1608,30 @@ describe("phase 1 auth and tenant foundation", () => {
       result: "failure"
     });
     expect(JSON.stringify(filtered.json())).not.toContain("Dashboard Integration");
+  });
+
+  it("rejects invalid audit event filters", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const ownerCookie = await login(app, "owner@acme.test");
+
+    const invalidActor = await app.inject({
+      method: "GET",
+      url: "/audit-events?actorType=attacker",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(invalidActor.statusCode).toBe(400);
+    expect(invalidActor.json()).toEqual({ error: "invalid_audit_actor_type" });
+
+    const invalidResult = await app.inject({
+      method: "GET",
+      url: "/audit-events?result=maybe",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(invalidResult.statusCode).toBe(400);
+    expect(invalidResult.json()).toEqual({ error: "invalid_audit_result" });
   });
 
   it("returns security dashboard metrics alerts and risky events", async () => {

@@ -19,6 +19,9 @@ Phase 8 adds baseline browser, request, and session safety controls for the demo
 - Request body size is limited at the Fastify boundary.
 - Error responses use stable error codes and do not expose stack traces.
 - The web client sends CSRF tokens for mutating session-backed requests.
+- In-memory demo rate limits protect login, API keys, external API calls, share links, and uploads.
+- Audit event filters validate actor and result values before querying.
+- Frontend responses define CSP and baseline browser security headers through Next.js config.
 
 ## Security Notes
 
@@ -30,11 +33,11 @@ Phase 8 adds baseline browser, request, and session safety controls for the demo
 ## Verification
 
 - Tests cover security headers, CORS allowed headers, CSRF rejection and acceptance, request body limits, and no stack trace leakage.
+- Tests cover login rate limiting and invalid audit filter rejection.
 - Existing authorization, tenant isolation, file, share-link, API key, and dashboard tests continue to pass.
 
 ## Remaining Hardening
 
-- Add frontend CSP headers through Next.js middleware or hosting config.
-- Add rate limiting for auth, API key, share-link, and upload endpoints.
+- Move rate limits to Redis for multi-instance deployments.
 - Add structured request logging with redaction.
-- Add schema validation for all request bodies and query strings.
+- Expand schema validation for all request bodies and query strings.
