@@ -32,6 +32,8 @@ TrustVault Lite is inspired by:
 
 - [Product brief](docs/product/product-brief.md)
 - [Demo script](docs/product/demo-script.md)
+- [Demo accounts](docs/product/demo-accounts.md)
+- [Portfolio assets](docs/product/portfolio-assets.md)
 - [Implementation plan](docs/implementation/implementation-plan.md)
 - [Backlog](docs/implementation/backlog.md)
 - [Definition of done](docs/implementation/definition-of-done.md)
@@ -72,13 +74,19 @@ trustvault-lite/
     workflows/
 ```
 
-## MVP Phases
+## Implemented Demo Scope
 
-1. SaaS foundation: auth, tenants, memberships, invitations.
-2. Document vault: projects, upload, scan status, secure download.
-3. Authorization hardening: policy layer, negative tests, field-level filtering.
-4. Security dashboard: audit logs, API keys, sessions, MFA status, share links.
-5. DevSecOps: security pipeline and verifiable reports.
+- Development login with seeded users and tenant memberships.
+- Tenant switcher with membership enforcement.
+- Centralized authorization policy layer with role-boundary tests.
+- PostgreSQL RLS migration and database-backed cross-tenant tests.
+- Project and document lifecycle with mock scan processing.
+- Private storage abstraction and expiring download metadata.
+- Share links with hashed tokens, expiry, revocation, and max-download controls.
+- API keys with hashed storage, one-time display, scopes, expiry, revocation, and external API usage.
+- Audit events and security dashboard for security-relevant activity.
+- Browser/API hardening with CSP, security headers, CORS, CSRF, rate limits, shape validation, and log redaction.
+- GitHub Actions CI and security workflows.
 
 ## Local Development
 
@@ -93,6 +101,21 @@ pnpm dev:web
 The local PostgreSQL service is defined in `infra/docker/docker-compose.yml`.
 The initial RLS migration is in `infra/migrations/0001_initial_rls.sql`.
 
+The demo setup can also be prepared with:
+
+```bash
+pnpm demo:setup
+```
+
+Then run the API and web app in separate terminals:
+
+```bash
+pnpm dev:api
+pnpm dev:web
+```
+
+Open `http://localhost:3000` and log in with `owner@acme.test`.
+
 Database-backed integration tests are opt-in:
 
 ```bash
@@ -100,6 +123,37 @@ pnpm db:up
 pnpm db:migrate
 pnpm test:db
 ```
+
+## Local Security Checks
+
+```bash
+pnpm test:security
+```
+
+This runs linting, unit/integration tests, type checks, and database-backed tests.
+
+If `make` is available, equivalent targets are:
+
+```bash
+make demo
+make test-security
+make zap-scan
+```
+
+The ZAP scan expects the web app to be available at `http://localhost:3000` on the host machine.
+
+## Demo Accounts
+
+| Email | Tenant | Role |
+| --- | --- | --- |
+| `owner@acme.test` | Acme Corp | Owner |
+| `admin@acme.test` | Acme Corp | Admin |
+| `member@acme.test` | Acme Corp | Member |
+| `viewer@acme.test` | Acme Corp | Viewer |
+| `auditor@acme.test` | Acme Corp | Auditor |
+| `owner@globex.test` | Globex | Owner |
+
+See [demo accounts](docs/product/demo-accounts.md) for the role-by-role walkthrough.
 
 ## Security Controls Matrix
 

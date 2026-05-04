@@ -36,3 +36,9 @@ This is the main portfolio or interview demo scenario.
 ## Presentation Message
 
 TrustVault Lite is not presented as a certified product. It is an ASVS-inspired demo that shows verifiable controls for tenant isolation, authorization, secure upload handling, auditability, and secure SDLC.
+
+## Supporting Assets
+
+- Demo accounts: `docs/product/demo-accounts.md`
+- Portfolio screenshot and video checklist: `docs/product/portfolio-assets.md`
+- Architecture diagram: `docs/assets/trustvault-security-architecture.svg`

@@ -11,10 +11,13 @@
     "db:up": "docker compose -f infra/docker/docker-compose.yml up -d postgres",
     "db:down": "docker compose -f infra/docker/docker-compose.yml down",
     "db:migrate": "node scripts/run-migration.mjs",
+    "demo:setup": "pnpm install && pnpm db:up && pnpm db:migrate",
     "dev:api": "pnpm --filter @trustvault/api dev",
     "dev:web": "pnpm --filter @trustvault/web dev",
     "test": "pnpm build:packages && pnpm -r test",
     "test:db": "node scripts/run-db-tests.mjs",
+    "test:security": "pnpm lint && pnpm test && pnpm typecheck && pnpm test:db",
+    "zap:scan": "docker run --rm -t --add-host=host.docker.internal:host-gateway ghcr.io/zaproxy/zaproxy:stable zap-baseline.py -t http://host.docker.internal:3000 -a",
     "lint": "pnpm -r lint",
     "typecheck": "pnpm build:packages && pnpm -r typecheck"
   },

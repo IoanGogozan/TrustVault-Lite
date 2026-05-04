@@ -299,13 +299,31 @@ Remaining hardening:
 
 ## Phase 10: Portfolio Polish
 
-- short demo video;
-- screenshots;
-- architecture diagram;
-- security controls matrix;
-- demo accounts;
-- seed data;
-- `make demo`;
-- `make test-security`;
-- `make zap-scan`;
-- well-structured public README.
+Status: implemented for the current demo scope.
+
+Completed:
+
+- Document short demo video shot list.
+- Document screenshot checklist.
+- Save architecture diagram as a repo asset.
+- Maintain security controls matrix in the README.
+- Document demo accounts.
+- Document seeded demo data.
+- Add `make demo`.
+- Add `make test-security`.
+- Add `make zap-scan`.
+- Add `pnpm demo:setup`.
+- Add `pnpm test:security`.
+- Add `pnpm zap:scan`.
+- Structure the public README around positioning, implemented scope, quick start, demo accounts, controls, and limitations.
+
+Implementation note:
+
+- Demo accounts are documented in `docs/product/demo-accounts.md`.
+- Portfolio capture guidance is documented in `docs/product/portfolio-assets.md`.
+
+Remaining polish:
+
+- Capture real screenshots after running the app locally.
+- Record the final short demo video.
+- Add the screenshots under `docs/assets/screenshots/` when available.
