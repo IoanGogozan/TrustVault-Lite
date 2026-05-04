@@ -1032,6 +1032,14 @@ describe("phase 1 auth and tenant foundation", () => {
       entityId: versionId,
       result: "success"
     });
+    expect(download.json().download).toMatchObject({
+      documentId: "document_acme_policy",
+      versionId,
+      originalFilename: "evidence.pdf",
+      expiresInSeconds: 300
+    });
+    expect(download.json().download).toHaveProperty("expiresAt");
+    expect(download.json().download).not.toHaveProperty("storageKey");
   });
 
   it("processes the queued scan job and keeps malware-demo files blocked", async () => {

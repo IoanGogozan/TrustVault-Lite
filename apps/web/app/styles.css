@@ -78,7 +78,8 @@ button:disabled {
 
 .primary-action,
 .secondary-action,
-.icon-action {
+.icon-action,
+.compact-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -107,6 +108,18 @@ button:disabled {
   background: var(--surface-muted);
   border: 1px solid #b8ccc5;
   border-radius: 6px;
+  font-weight: 700;
+}
+
+.compact-action {
+  min-height: 32px;
+  flex: 0 0 auto;
+  padding: 0 10px;
+  color: var(--accent-strong);
+  background: var(--surface-muted);
+  border: 1px solid #b8ccc5;
+  border-radius: 6px;
+  font-size: 0.82rem;
   font-weight: 700;
 }
 
@@ -323,10 +336,26 @@ button:disabled {
   cursor: default;
 }
 
+.record-row.document-row {
+  align-items: start;
+}
+
+.record-row.document-row div {
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
 .record-row span,
 .audit-row strong {
   min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.record-row small {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
 }
 
 .record-row strong {

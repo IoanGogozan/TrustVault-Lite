@@ -143,7 +143,9 @@ USING (
 
 ## Phase 4: Document Vault and Upload Pipeline
 
-Tasks:
+Status: nearly complete.
+
+Completed:
 
 - Create `projects`.
 - Create upload endpoint.
@@ -154,6 +156,9 @@ Tasks:
 - Mark document as `pending_scan`.
 - Worker marks the file as `clean` or `blocked`.
 - Allow download only for `clean` files.
+- Expose expiring download metadata without leaking private storage keys.
+- Show the project, document, upload, scan, download, and audit flow in the web UI.
+- Provide a minimal audit viewer for generated lifecycle events.
 
 Current worker note:
 

@@ -62,6 +62,16 @@ type AuditEvent = {
   createdAt: string;
 };
 
+type DownloadMetadata = {
+  documentId: string;
+  versionId: string;
+  originalFilename: string;
+  mimeType: string;
+  sizeBytes: number;
+  expiresInSeconds: number;
+  expiresAt: string;
+};
+
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 
 const securitySignals = [
@@ -83,6 +93,7 @@ export default function Home() {
   const [projects, setProjects] = useState<Project[]>([]);
   const [documents, setDocuments] = useState<DocumentRecord[]>([]);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
+  const [downloadMetadata, setDownloadMetadata] = useState<DownloadMetadata | undefined>();
   const [statusMessage, setStatusMessage] = useState<string | undefined>();
 
   const selectedMembership = useMemo(
@@ -249,6 +260,26 @@ export default function Home() {
     await apiPost("/internal/scan-jobs/process-next", selectedMembership.tenantId, {});
 
     setStatusMessage("Document uploaded");
+    await refreshWorkspace(selectedMembership.tenantId);
+  }
+
+  async function handlePrepareDownload(documentId: string) {
+    if (!selectedMembership) {
+      return;
+    }
+
+    const response = await apiGet<{ download: DownloadMetadata }>(
+      `/documents/${documentId}/download`,
+      selectedMembership.tenantId
+    );
+
+    if (!response) {
+      setStatusMessage("Download is not available");
+      return;
+    }
+
+    setDownloadMetadata(response.download);
+    setStatusMessage("Download prepared");
     await refreshWorkspace(selectedMembership.tenantId);
   }
 
@@ -489,12 +520,33 @@ export default function Home() {
             </div>
             <div className="record-list">
               {documents.map((document) => (
-                <div className="record-row passive" key={document.id}>
-                  <span>{document.title}</span>
-                  <strong>{formatClassification(document.classification)}</strong>
+                <div className="record-row passive document-row" key={document.id}>
+                  <div>
+                    <span>{document.title}</span>
+                    <small>{formatClassification(document.classification)}</small>
+                  </div>
+                  <button
+                    className="compact-action"
+                    type="button"
+                    onClick={() => void handlePrepareDownload(document.id)}
+                  >
+                    Prepare download
+                  </button>
                 </div>
               ))}
             </div>
+            {downloadMetadata ? (
+              <dl className="details compact">
+                <div>
+                  <dt>File</dt>
+                  <dd>{downloadMetadata.originalFilename}</dd>
+                </div>
+                <div>
+                  <dt>Expires</dt>
+                  <dd>{new Date(downloadMetadata.expiresAt).toLocaleTimeString()}</dd>
+                </div>
+              </dl>
+            ) : null}
           </article>
         </section>
 
