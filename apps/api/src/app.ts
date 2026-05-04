@@ -101,6 +101,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     if (origin && isAllowedOrigin(origin)) {
       reply.header("Access-Control-Allow-Origin", origin);
       reply.header("Access-Control-Allow-Credentials", "true");
+      reply.header("Access-Control-Expose-Headers", "Content-Disposition, Content-Length");
       reply.header("Vary", "Origin");
     }
 
@@ -1174,6 +1175,37 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     };
   });
 
+  app.get<{ Params: { token: string } }>(
+    "/public/share-links/:token/download",
+    async (request, reply) => {
+      const publicDownload = await resolvePublicShareLinkDownload(request, reply);
+
+      if (!publicDownload) {
+        return;
+      }
+
+      const { shareLink, document, version, content } = publicDownload;
+      const usedShareLink = await shareLinkRepository.incrementDownload(
+        shareLink.tenantId,
+        shareLink.id
+      );
+      appendPublicShareLinkAuditEvent(
+        store,
+        request,
+        usedShareLink ?? shareLink,
+        "share_link.used",
+        "success",
+        {
+          documentId: document.id,
+          versionId: version.id,
+          delivery: "proxy"
+        }
+      );
+
+      return sendStoredVersionContent(reply, version, content);
+    }
+  );
+
   app.get("/api/v1/documents", async (request, reply) => {
     const apiAuth = await requireApiKey(store, apiKeyRepository, request, reply, "documents:read");
 
@@ -1687,6 +1719,179 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     }
   );
 
+  app.get<{ Params: { documentId: string } }>(
+    "/documents/:documentId/download/content",
+    async (request, reply) => {
+      const resolvedDownload = await resolveAuthenticatedDocumentDownload(request, reply);
+
+      if (!resolvedDownload) {
+        return;
+      }
+
+      const { document, version, content } = resolvedDownload;
+      appendAuditEvent(store, request, {
+        action: "document.downloaded",
+        entityType: "document_version",
+        entityId: version.id,
+        result: "success",
+        metadata: {
+          documentId: document.id,
+          delivery: "proxy"
+        }
+      });
+
+      return sendStoredVersionContent(reply, version, content);
+    }
+  );
+
+  async function resolveAuthenticatedDocumentDownload(
+    request: FastifyRequest<{ Params: { documentId: string } }>,
+    reply: FastifyReply
+  ) {
+    await requireTenantContext(store, request, reply);
+
+    if (!request.tenantContext) {
+      return undefined;
+    }
+
+    const document =
+      (await documentRepository.findByIdForAuthorization?.(request.params.documentId)) ??
+      (await documentRepository.findVisibleById(
+        toDocumentReadScope(request.tenantContext),
+        request.params.documentId
+      ));
+
+    if (!document) {
+      await reply.code(404).send({ error: "document_not_found" });
+      return undefined;
+    }
+
+    const allowed = await requirePermission(store, request, reply, "documents:read", {
+      tenantId: document.tenantId,
+      projectId: document.projectId,
+      classification: document.classification,
+      entityType: "document",
+      entityId: document.id
+    });
+
+    if (!allowed) {
+      return undefined;
+    }
+
+    const version = await documentRepository.findCurrentVersionForDownload(
+      toDocumentReadScope(request.tenantContext),
+      document.id
+    );
+
+    if (!version) {
+      await reply.code(404).send({ error: "document_version_not_found" });
+      return undefined;
+    }
+
+    if (version.scanStatus !== "clean") {
+      await reply.code(409).send({ error: "file_not_available_until_clean_scan" });
+      return undefined;
+    }
+
+    const content = await storage.get(version.storageKey);
+
+    if (!content) {
+      await reply.code(404).send({ error: "stored_file_not_found" });
+      return undefined;
+    }
+
+    return { document, version, content };
+  }
+
+  async function resolvePublicShareLinkDownload(
+    request: FastifyRequest<{ Params: { token: string } }>,
+    reply: FastifyReply
+  ) {
+    const parsedToken = parseOpaqueToken(request.params.token, "tv_share");
+    const shareLink = parsedToken
+      ? await shareLinkRepository.findByIdAndTokenHash(
+          parsedToken.id,
+          hashSecret(parsedToken.secret)
+        )
+      : undefined;
+
+    if (!shareLink) {
+      await reply.code(404).send({ error: "share_link_not_found" });
+      return undefined;
+    }
+
+    if (shareLink.revokedAt) {
+      appendPublicShareLinkAuditEvent(store, request, shareLink, "share_link.denied", "failure", {
+        reason: "revoked"
+      });
+      await reply.code(403).send({ error: "share_link_revoked" });
+      return undefined;
+    }
+
+    if (shareLink.expiresAt <= new Date()) {
+      appendPublicShareLinkAuditEvent(store, request, shareLink, "share_link.denied", "failure", {
+        reason: "expired"
+      });
+      await reply.code(410).send({ error: "share_link_expired" });
+      return undefined;
+    }
+
+    if (
+      shareLink.maxDownloads !== undefined &&
+      shareLink.downloadCount >= shareLink.maxDownloads
+    ) {
+      appendPublicShareLinkAuditEvent(store, request, shareLink, "share_link.denied", "failure", {
+        reason: "max_downloads_reached"
+      });
+      await reply.code(403).send({ error: "share_link_download_limit_reached" });
+      return undefined;
+    }
+
+    const document = await documentRepository.findVisibleById(
+      {
+        tenantId: shareLink.tenantId,
+        role: "owner"
+      },
+      shareLink.documentId
+    );
+
+    if (!document) {
+      appendPublicShareLinkAuditEvent(store, request, shareLink, "share_link.denied", "failure", {
+        reason: "document_not_found"
+      });
+      await reply.code(404).send({ error: "document_not_found" });
+      return undefined;
+    }
+
+    const version = await documentRepository.findCurrentVersionForDownload(
+      {
+        tenantId: shareLink.tenantId,
+        role: "owner"
+      },
+      document.id
+    );
+
+    if (!version || version.scanStatus !== "clean") {
+      appendPublicShareLinkAuditEvent(store, request, shareLink, "share_link.denied", "failure", {
+        reason: "document_not_available"
+      });
+      await reply.code(409).send({ error: "document_not_available" });
+      return undefined;
+    }
+
+    const content = await storage.get(version.storageKey);
+
+    if (!content) {
+      appendPublicShareLinkAuditEvent(store, request, shareLink, "share_link.denied", "failure", {
+        reason: "stored_file_not_found"
+      });
+      await reply.code(404).send({ error: "stored_file_not_found" });
+      return undefined;
+    }
+
+    return { shareLink, document, version, content };
+  }
+
   return app;
 }
 
@@ -1694,6 +1899,29 @@ function normalizeName(name: string | undefined): string | undefined {
   const normalized = name?.trim().replace(/\s+/g, " ");
 
   return normalized || undefined;
+}
+
+function sendStoredVersionContent(
+  reply: FastifyReply,
+  version: {
+    originalFilename: string;
+    mimeType: string;
+    sizeBytes: number;
+  },
+  content: Buffer
+) {
+  return reply
+    .header("Content-Type", version.mimeType)
+    .header("Content-Length", String(content.byteLength))
+    .header("Content-Disposition", contentDispositionAttachment(version.originalFilename))
+    .header("X-Content-Type-Options", "nosniff")
+    .send(content);
+}
+
+function contentDispositionAttachment(filename: string): string {
+  const fallbackFilename = filename.replace(/[^\x20-\x7E]/g, "_").replace(/["\\]/g, "_");
+
+  return `attachment; filename="${fallbackFilename}"; filename*=UTF-8''${encodeURIComponent(filename)}`;
 }
 
 function setSecurityHeaders(reply: FastifyReply, env: string): void {

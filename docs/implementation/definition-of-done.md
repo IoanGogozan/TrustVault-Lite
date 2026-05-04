@@ -7,7 +7,7 @@ The application is portfolio-ready when the answers below are demonstrable in th
 | How are tenants isolated? | `tenant_id`, RLS, cross-tenant tests |
 | How is IDOR/BOLA prevented? | Object-level authorization plus negative tests |
 | How are roles controlled? | Centralized RBAC/ABAC |
-| How are files protected? | Private storage, validation, scanning, signed URLs |
+| How are files protected? | Private storage, validation, scanning, proxy downloads |
 | How are sessions managed? | Secure cookies, revocation, active sessions |
 | How are suspicious events detected? | Audit logs plus security dashboard |
 | How is the API secured? | Scoped API keys, rate limits, no mass assignment |
@@ -27,4 +27,3 @@ The application is portfolio-ready when the answers below are demonstrable in th
 - Wildcard CORS.
 - Missing negative tests.
 - README claims like "secure app" without evidence.
-

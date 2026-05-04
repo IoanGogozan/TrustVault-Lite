@@ -9,10 +9,10 @@ This is the main portfolio or interview demo scenario.
 3. Create a new evidence project from the web UI.
 4. Create a document in that project and upload the demo PDF.
 5. Process the mock scan job and show the file becoming downloadable.
-6. Prepare a download and show that the UI receives expiring download metadata without exposing the private storage key.
+6. Prepare a download and show that the UI receives expiring download metadata, then downloads the file through the API proxy without exposing the private storage key.
 7. Create a share link for the clean document.
 8. Show that the raw share token appears only once.
-9. Use the public share link and show that download metadata is returned without exposing storage internals.
+9. Use the public share link and show that the file downloads through the API proxy without exposing storage internals.
 10. Revoke the share link and show that later public access is denied.
 11. Show the audit viewer with `project.created`, `document.created`, `document.uploaded`, `document.scan_queued`, `document.scan_clean`, `document.downloaded`, `share_link.created`, `share_link.used`, and `share_link.revoked`.
 12. Invite a user with the `Viewer` role.

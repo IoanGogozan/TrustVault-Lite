@@ -26,6 +26,7 @@ Relevant events:
 - `S3CompatiblePrivateObjectStorage` defines an adapter boundary for MinIO or S3-compatible clients.
 - The S3-compatible adapter accepts a small client interface instead of importing a cloud SDK directly.
 - API responses expose expiring download metadata, not object paths, bucket names, or storage keys.
+- Authenticated and public proxy download endpoints stream clean file content from private storage without exposing storage keys.
 
 ## Share Links
 
@@ -73,6 +74,8 @@ External API:
 ## Browser and API Hardening
 
 - API responses include baseline security headers.
+- The web app uses separate development and production CSP policies; production removes `unsafe-eval`.
+- Production web responses include HSTS.
 - CORS is allowlisted to local web origins.
 - Browser-origin mutating session requests require `X-CSRF-Token`.
 - Browser-like mutating session requests with missing or unknown origins are rejected.
@@ -104,6 +107,7 @@ External API:
 
 - Development login is used for local demo speed and is disabled in production mode.
 - Production identity is expected to use OIDC Authorization Code Flow with MFA or passkeys.
+- Upload transport uses base64 JSON for demo simplicity; production upload transport should use multipart or presigned uploads.
 - Malware scanning uses a documented mock worker instead of ClamAV.
 - Redis and S3-compatible adapters are present as boundaries, but local demo defaults remain in-memory.
 - SBOM generation is planned for release artifacts but is not implemented yet.

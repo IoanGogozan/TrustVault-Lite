@@ -32,7 +32,7 @@ TrustVault Lite is designed as a secure SaaS demo with visible and testable cont
 - PostgreSQL RLS.
 - Upload validation and scanning.
 - Private object storage.
-- Expiring signed URLs.
+- Proxy downloads for clean files.
 - Hashed API keys with scopes.
 - Rate limiting.
 - Audit events.

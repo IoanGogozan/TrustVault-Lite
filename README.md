@@ -81,7 +81,7 @@ trustvault-lite/
 - Centralized authorization policy layer with role-boundary tests.
 - PostgreSQL RLS migration and database-backed cross-tenant tests.
 - Project and document lifecycle with mock scan processing.
-- Private storage abstraction and expiring download metadata.
+- Private storage abstraction, expiring download metadata, and proxy download endpoints.
 - Share links with opaque hashed tokens, public-safe responses, expiry, revocation, and max-download controls.
 - API keys with hashed storage, one-time display, scopes, expiry, revocation, and external API usage.
 - Audit events and security dashboard for security-relevant activity, including auth, invitation, role-change, API key, share-link, and document lifecycle events.
@@ -165,7 +165,7 @@ See [demo accounts](docs/product/demo-accounts.md) for the role-by-role walkthro
 | Tenant isolation | RLS + `tenant_id` | PostgreSQL policies | Cross-tenant tests |
 | API Security | Scoped API keys | Hash + scopes + expiry | API integration tests |
 | File Security | Validation + scanning | Upload worker | Upload tests |
-| Data Protection | Private storage | Signed URLs | Download tests |
+| Data Protection | Private storage | Proxy downloads | Download tests |
 | Auditability | Audit events | Audit service | Audit assertions |
 | Browser Security | CSP + headers | Middleware | Header tests |
 | DevSecOps | Security scans in CI | GitHub Actions | Pipeline artifacts |
@@ -175,6 +175,7 @@ See [demo accounts](docs/product/demo-accounts.md) for the role-by-role walkthro
 ## Assumed Limitations
 
 - This is a portfolio demo, not a certified product.
+- Authentication currently uses demo login with seeded users. Production identity should use OIDC Authorization Code Flow with MFA or passkeys.
+- Uploads currently use base64 JSON payloads for demo simplicity. Production upload transport should move to multipart or presigned upload URLs with the same validation and scan pipeline.
 - Malware scanning may start with a documented mock and later move to ClamAV.
 - Billing is mocked.
-- The identity provider may run locally for demo purposes, but the integration should follow OIDC Authorization Code Flow.

@@ -28,7 +28,7 @@ Target length: 2 to 4 minutes.
 1. Open the README and show the positioning statement.
 2. Start the app and log in as `owner@acme.test`.
 3. Create a project and upload a document.
-4. Show scan completion and prepare download metadata.
+4. Show scan completion, prepare download metadata, and download the file through the API proxy.
 5. Create and use a share link, then revoke it.
 6. Create a read-only API key and show scoped access.
 7. Trigger a denied action or cross-tenant access attempt.

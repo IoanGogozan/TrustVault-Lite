@@ -1138,6 +1138,15 @@ describe("phase 1 auth and tenant foundation", () => {
 
     expect(download.statusCode).toBe(409);
     expect(download.json()).toEqual({ error: "file_not_available_until_clean_scan" });
+
+    const contentDownload = await app.inject({
+      method: "GET",
+      url: "/documents/document_acme_policy/download/content",
+      headers: { cookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(contentDownload.statusCode).toBe(409);
+    expect(contentDownload.json()).toEqual({ error: "file_not_available_until_clean_scan" });
   });
 
   it("allows download metadata after a clean scan without exposing storage path", async () => {
@@ -1178,6 +1187,57 @@ describe("phase 1 auth and tenant foundation", () => {
     });
     expect(download.json().download).not.toHaveProperty("storageKey");
     expect(download.json().download).not.toHaveProperty("storagePath");
+
+    const contentDownload = await app.inject({
+      method: "GET",
+      url: "/documents/document_acme_policy/download/content",
+      headers: { cookie: memberCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(contentDownload.statusCode).toBe(200);
+    expect(contentDownload.headers["content-type"]).toBe("application/pdf");
+    expect(contentDownload.headers["content-disposition"]).toContain("evidence.pdf");
+    expect(contentDownload.body).toContain("%PDF-");
+    expect(contentDownload.body).not.toContain("tenant_acme/documents");
+  });
+
+  it("allows viewers to download clean file content without upload permission", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const memberCookie = await login(app, "member@acme.test");
+    const viewerCookie = await login(app, "viewer@acme.test");
+    const adminCookie = await login(app, "admin@acme.test");
+
+    const upload = await app.inject({
+      method: "POST",
+      url: "/documents/document_acme_policy/versions",
+      headers: { cookie: memberCookie, "x-tenant-id": "tenant_acme" },
+      payload: pdfUploadPayload("viewer-download")
+    });
+
+    await app.inject({
+      method: "POST",
+      url: `/document-versions/${upload.json().version.id}/scan-result`,
+      headers: internalWorkerHeaders(adminCookie, "tenant_acme"),
+      payload: { scanStatus: "clean" }
+    });
+
+    const uploadAttempt = await app.inject({
+      method: "POST",
+      url: "/documents/document_acme_policy/versions",
+      headers: { cookie: viewerCookie, "x-tenant-id": "tenant_acme" },
+      payload: pdfUploadPayload("viewer-upload")
+    });
+
+    expect(uploadAttempt.statusCode).toBe(403);
+
+    const contentDownload = await app.inject({
+      method: "GET",
+      url: "/documents/document_acme_policy/download/content",
+      headers: { cookie: viewerCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(contentDownload.statusCode).toBe(200);
+    expect(contentDownload.body).toContain("%PDF-viewer-download");
   });
 
   it("requires an internal worker token for manual scan result updates", async () => {
@@ -1254,6 +1314,15 @@ describe("phase 1 auth and tenant foundation", () => {
 
     expect(download.statusCode).toBe(409);
     expect(download.json()).toEqual({ error: "file_not_available_until_clean_scan" });
+
+    const contentDownload = await app.inject({
+      method: "GET",
+      url: "/documents/document_acme_policy/download/content",
+      headers: { cookie: memberCookie, "x-tenant-id": "tenant_acme" }
+    });
+
+    expect(contentDownload.statusCode).toBe(409);
+    expect(contentDownload.json()).toEqual({ error: "file_not_available_until_clean_scan" });
   });
 
   it("processes the queued scan job and transitions clean files to downloadable", async () => {
@@ -1476,6 +1545,21 @@ describe("phase 1 auth and tenant foundation", () => {
     const store = createDemoStore();
     const app = buildApp({ store });
     const memberCookie = await login(app, "member@acme.test");
+    const adminCookie = await login(app, "admin@acme.test");
+
+    const upload = await app.inject({
+      method: "POST",
+      url: "/documents/document_acme_policy/versions",
+      headers: { cookie: memberCookie, "x-tenant-id": "tenant_acme" },
+      payload: pdfUploadPayload("public-download")
+    });
+
+    await app.inject({
+      method: "POST",
+      url: `/document-versions/${upload.json().version.id}/scan-result`,
+      headers: internalWorkerHeaders(adminCookie, "tenant_acme"),
+      payload: { scanStatus: "clean" }
+    });
 
     const created = await app.inject({
       method: "POST",
@@ -1495,7 +1579,7 @@ describe("phase 1 auth and tenant foundation", () => {
 
     expect(firstUse.statusCode).toBe(200);
     expect(firstUse.json().download).toMatchObject({
-      originalFilename: "security-policy.pdf",
+      originalFilename: "evidence.pdf",
       expiresInSeconds: 300
     });
     expect(firstUse.json().download).not.toHaveProperty("documentId");
@@ -1524,6 +1608,57 @@ describe("phase 1 auth and tenant foundation", () => {
 
     expect(secondUse.statusCode).toBe(403);
     expect(secondUse.json()).toEqual({ error: "share_link_download_limit_reached" });
+  });
+
+  it("downloads public share link content through the API proxy", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const memberCookie = await login(app, "member@acme.test");
+    const adminCookie = await login(app, "admin@acme.test");
+
+    const upload = await app.inject({
+      method: "POST",
+      url: "/documents/document_acme_policy/versions",
+      headers: { cookie: memberCookie, "x-tenant-id": "tenant_acme" },
+      payload: pdfUploadPayload("share-content")
+    });
+
+    await app.inject({
+      method: "POST",
+      url: `/document-versions/${upload.json().version.id}/scan-result`,
+      headers: internalWorkerHeaders(adminCookie, "tenant_acme"),
+      payload: { scanStatus: "clean" }
+    });
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/share-links",
+      headers: { cookie: memberCookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        documentId: "document_acme_policy",
+        maxDownloads: 1
+      }
+    });
+    const token = created.json().shareToken;
+
+    const contentDownload = await app.inject({
+      method: "GET",
+      url: `/public/share-links/${token}/download`
+    });
+
+    expect(contentDownload.statusCode).toBe(200);
+    expect(contentDownload.headers["content-type"]).toBe("application/pdf");
+    expect(contentDownload.headers["content-disposition"]).toContain("evidence.pdf");
+    expect(contentDownload.body).toContain("%PDF-share-content");
+    expect(contentDownload.body).not.toContain("tenant_acme/documents");
+
+    const secondDownload = await app.inject({
+      method: "GET",
+      url: `/public/share-links/${token}/download`
+    });
+
+    expect(secondDownload.statusCode).toBe(403);
+    expect(secondDownload.json()).toEqual({ error: "share_link_download_limit_reached" });
   });
 
   it("rejects invalid expired and revoked share links", async () => {
@@ -1581,6 +1716,22 @@ describe("phase 1 auth and tenant foundation", () => {
 
     expect(revokedUse.statusCode).toBe(403);
     expect(revokedUse.json()).toEqual({ error: "share_link_revoked" });
+
+    const expiredContent = await app.inject({
+      method: "GET",
+      url: `/public/share-links/${expired.json().shareToken}/download`
+    });
+
+    expect(expiredContent.statusCode).toBe(410);
+    expect(expiredContent.json()).toEqual({ error: "share_link_expired" });
+
+    const revokedContent = await app.inject({
+      method: "GET",
+      url: `/public/share-links/${active.json().shareToken}/download`
+    });
+
+    expect(revokedContent.statusCode).toBe(403);
+    expect(revokedContent.json()).toEqual({ error: "share_link_revoked" });
   });
 
   it("denies share link creation for viewers", async () => {

@@ -14,7 +14,7 @@ This mapping is ASVS-inspired and does not represent certification.
 | File Upload | extension allowlist, MIME sniffing, size, scanning | upload tests, worker logs |
 | API Security | scopes, hashed API keys, rate limits | API integration tests |
 | Audit Logging | structured audit events | audit event assertions |
-| Data Protection | private storage, signed URLs | download tests |
+| Data Protection | private storage, proxy downloads | download tests |
 | Error Handling | no stack traces in production | error response tests |
 | Configuration | config validation at startup | config package tests |
 | Dependency Security | dependency scan in CI | GitHub Actions artifact |

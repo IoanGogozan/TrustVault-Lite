@@ -117,8 +117,8 @@ type ApiKeyRecord = {
 };
 
 type DownloadMetadata = {
-  documentId: string;
-  versionId: string;
+  documentId?: string;
+  versionId?: string;
   originalFilename: string;
   mimeType: string;
   sizeBytes: number;
@@ -355,7 +355,19 @@ export default function Home() {
     }
 
     setDownloadMetadata(response.download);
-    setStatusMessage("Download prepared");
+    const contentResponse = await fetch(`${apiBaseUrl}/documents/${documentId}/download/content`, {
+      credentials: "include",
+      headers: { "X-Tenant-Id": selectedMembership.tenantId }
+    });
+
+    if (!contentResponse.ok) {
+      setStatusMessage("Download is not available");
+      await refreshWorkspace(selectedMembership.tenantId);
+      return;
+    }
+
+    await saveDownloadResponse(contentResponse, response.download.originalFilename);
+    setStatusMessage("Download started");
     await refreshWorkspace(selectedMembership.tenantId);
   }
 
@@ -389,7 +401,7 @@ export default function Home() {
       return;
     }
 
-    const response = await fetch(`${apiBaseUrl}/public/share-links/${lastShareToken}`, {
+    const response = await fetch(`${apiBaseUrl}/public/share-links/${lastShareToken}/download`, {
       credentials: "omit"
     });
 
@@ -399,9 +411,8 @@ export default function Home() {
       return;
     }
 
-    const payload = (await response.json()) as { download: DownloadMetadata };
-    setDownloadMetadata(payload.download);
-    setStatusMessage("Share link used");
+    await saveDownloadResponse(response, "shared-document");
+    setStatusMessage("Share link download started");
     await refreshWorkspace(selectedMembership.tenantId);
   }
 
@@ -992,6 +1003,35 @@ function formatRole(role: Role): string {
 
 function formatClassification(classification: Classification): string {
   return classification.charAt(0).toUpperCase() + classification.slice(1);
+}
+
+async function saveDownloadResponse(response: Response, fallbackFilename: string): Promise<void> {
+  const blob = await response.blob();
+  const filename = filenameFromContentDisposition(response.headers.get("content-disposition")) ?? fallbackFilename;
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = window.document.createElement("a");
+
+  anchor.href = objectUrl;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  window.document.body.append(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(objectUrl);
+}
+
+function filenameFromContentDisposition(value: string | null): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const encodedFilename = /filename\*=UTF-8''([^;]+)/i.exec(value)?.[1];
+
+  if (encodedFilename) {
+    return decodeURIComponent(encodedFilename);
+  }
+
+  return /filename="([^"]+)"/i.exec(value)?.[1];
 }
 
 function csrfHeaders(): Record<string, string> {
