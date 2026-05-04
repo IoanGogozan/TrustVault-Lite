@@ -82,7 +82,8 @@ External API:
 - Demo rate limits protect login, API keys, external API calls, share links, and uploads.
 - Rate limit subjects hash bearer tokens before they are used as limiter keys.
 - A Redis-compatible rate limiter adapter exists for multi-instance deployments.
-- Request shape validation rejects unknown body and query keys on current endpoints.
+- Zod runtime validation rejects unknown keys and invalid body types on sensitive endpoints, including API keys, share links, documents, document uploads, scan result updates, and membership role changes.
+- Legacy request shape validation remains for lower-risk endpoints while the migration to strict schemas continues.
 - Production API logging redacts authorization headers, cookies, CSRF tokens, API keys, tokens, passwords, and file payloads.
 
 ## Internal Worker Controls

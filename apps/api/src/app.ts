@@ -4,6 +4,7 @@ import { readBaseConfig } from "@trustvault/config";
 import { InMemoryPrivateObjectStorage, type PrivateObjectStorage } from "@trustvault/storage";
 import { validateDocumentUpload } from "@trustvault/validation";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { z, type ZodType } from "zod";
 import {
   createSession,
   requireAuth,
@@ -1746,32 +1747,106 @@ type RequestShapeRule = {
   pattern: RegExp;
   bodyKeys?: readonly string[];
   queryKeys?: readonly string[];
+  bodySchema?: ZodType;
+  querySchema?: ZodType;
 };
+
+const documentClassificationSchema = z.enum(["public", "internal", "confidential", "restricted"]);
+const membershipRoleSchema = z.enum(["owner", "admin", "member", "viewer", "auditor"]);
+const apiKeyScopeSchema = z.enum(["documents:read", "documents:write", "audit:read"]);
+const optionalStrictEmptyBodySchema = z.object({}).strict().optional();
 
 const requestShapeRules: RequestShapeRule[] = [
   { method: "POST", pattern: /^\/auth\/dev-login$/, bodyKeys: ["email"] },
   { method: "POST", pattern: /^\/tenants$/, bodyKeys: ["name", "slug"] },
   { method: "POST", pattern: /^\/projects$/, bodyKeys: ["name", "classification"] },
   { method: "PATCH", pattern: /^\/projects\/[^/]+$/, bodyKeys: ["name", "classification"] },
-  { method: "PATCH", pattern: /^\/memberships\/[^/]+\/role$/, bodyKeys: ["role"] },
+  {
+    method: "PATCH",
+    pattern: /^\/memberships\/[^/]+\/role$/,
+    bodySchema: z
+      .object({
+        role: membershipRoleSchema.optional()
+      })
+      .strict()
+  },
   {
     method: "GET",
     pattern: /^\/audit-events$/,
     queryKeys: ["actorType", "action", "result", "limit"]
   },
-  { method: "POST", pattern: /^\/api-keys$/, bodyKeys: ["name", "scopes", "expiresInDays"] },
-  { method: "POST", pattern: /^\/share-links$/, bodyKeys: ["documentId", "expiresInMinutes", "maxDownloads"] },
+  {
+    method: "POST",
+    pattern: /^\/api-keys$/,
+    bodySchema: z
+      .object({
+        name: z.string().optional(),
+        scopes: z.array(apiKeyScopeSchema).optional(),
+        expiresInDays: z.number().int().min(1).max(365).optional()
+      })
+      .strict()
+  },
+  {
+    method: "POST",
+    pattern: /^\/share-links$/,
+    bodySchema: z
+      .object({
+        documentId: z.string().optional(),
+        expiresInMinutes: z.number().int().min(1).max(60 * 24 * 30).optional(),
+        maxDownloads: z.number().int().min(1).max(100).optional()
+      })
+      .strict()
+  },
   { method: "POST", pattern: /^\/tenant\/invitations$/, bodyKeys: ["email", "role"] },
   { method: "POST", pattern: /^\/invitations\/accept$/, bodyKeys: ["token", "name"] },
-  { method: "POST", pattern: /^\/api\/v1\/documents$/, bodyKeys: ["title", "projectId", "classification"] },
-  { method: "POST", pattern: /^\/documents$/, bodyKeys: ["title", "projectId", "classification"] },
+  {
+    method: "POST",
+    pattern: /^\/api\/v1\/documents$/,
+    bodySchema: z
+      .object({
+        title: z.string().optional(),
+        projectId: z.string().optional(),
+        classification: documentClassificationSchema.optional()
+      })
+      .strict()
+  },
+  {
+    method: "POST",
+    pattern: /^\/documents$/,
+    bodySchema: z
+      .object({
+        title: z.string().optional(),
+        projectId: z.string().optional(),
+        classification: documentClassificationSchema.optional()
+      })
+      .strict()
+  },
   {
     method: "POST",
     pattern: /^\/documents\/[^/]+\/versions$/,
-    bodyKeys: ["originalFilename", "mimeType", "sizeBytes", "contentBase64"]
+    bodySchema: z
+      .object({
+        originalFilename: z.string().optional(),
+        mimeType: z.string().optional(),
+        sizeBytes: z.number().int().nonnegative().optional(),
+        contentBase64: z.string().optional()
+      })
+      .strict()
   },
-  { method: "POST", pattern: /^\/document-versions\/[^/]+\/scan-result$/, bodyKeys: ["scanStatus"] },
-  { method: "POST", pattern: /^\/internal\/scan-jobs\/process-next$/, bodyKeys: [] }
+  {
+    method: "POST",
+    pattern: /^\/document-versions\/[^/]+\/scan-result$/,
+    bodySchema: z
+      .object({
+        scanStatus: z.enum(["clean", "blocked"]).optional()
+      })
+      .strict()
+  },
+  {
+    method: "POST",
+    pattern: /^\/internal\/scan-jobs\/process-next$/,
+    bodySchema: optionalStrictEmptyBodySchema
+  }
 ];
 
 function validateRequestShape(
@@ -1784,6 +1859,26 @@ function validateRequestShape(
 
   if (!rule) {
     return { valid: true };
+  }
+
+  if (rule.bodySchema) {
+    const parsedBody = rule.bodySchema.safeParse(request.body);
+
+    if (!parsedBody.success) {
+      return { valid: false, reason: "invalid_request_body" };
+    }
+
+    request.body = parsedBody.data;
+  }
+
+  if (rule.querySchema) {
+    const parsedQuery = rule.querySchema.safeParse(request.query);
+
+    if (!parsedQuery.success) {
+      return { valid: false, reason: "invalid_query_parameters" };
+    }
+
+    request.query = parsedQuery.data;
   }
 
   if (rule.bodyKeys && !hasOnlyAllowedKeys(request.body, rule.bodyKeys)) {

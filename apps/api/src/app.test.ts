@@ -680,6 +680,25 @@ describe("phase 1 auth and tenant foundation", () => {
     ).toBe("member");
   });
 
+  it("rejects invalid membership role body types", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const cookie = await login(app, "owner@acme.test");
+
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/memberships/membership_acme_member/role",
+      headers: { cookie, "x-tenant-id": "tenant_acme" },
+      payload: { role: 123 }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "invalid_request_body" });
+    expect(
+      store.memberships.find((membership) => membership.id === "membership_acme_member")?.role
+    ).toBe("member");
+  });
+
   it("prevents admins from modifying owners", async () => {
     const store = createDemoStore();
     const app = buildApp({ store });
@@ -833,6 +852,29 @@ describe("phase 1 auth and tenant foundation", () => {
         classification: "confidential",
         tenantId: "tenant_globex",
         storageKey: "attacker-controlled-path"
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "invalid_request_body" });
+    expect(store.documents).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ title: "Evidence Upload" })])
+    );
+  });
+
+  it("rejects invalid document body types before authorization", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const cookie = await login(app, "member@acme.test");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/documents",
+      headers: { cookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        title: ["Evidence Upload"],
+        projectId: "project_acme_soc2",
+        classification: "confidential"
       }
     });
 
@@ -1039,6 +1081,24 @@ describe("phase 1 auth and tenant foundation", () => {
     expect(response.json()).toEqual({ error: "file_signature_mismatch" });
   });
 
+  it("rejects invalid upload body types", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const cookie = await login(app, "member@acme.test");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/documents/document_acme_policy/versions",
+      headers: { cookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        ...pdfUploadPayload(),
+        sizeBytes: "not-a-number"
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "invalid_request_body" });
+  });
+
   it("stores uploaded versions as pending scan and blocks download until clean", async () => {
     const store = createDemoStore();
     const app = buildApp({ store });
@@ -1141,6 +1201,29 @@ describe("phase 1 auth and tenant foundation", () => {
 
     expect(response.statusCode).toBe(403);
     expect(response.json()).toEqual({ error: "internal_worker_required" });
+  });
+
+  it("rejects invalid manual scan result body types", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const memberCookie = await login(app, "member@acme.test");
+    const adminCookie = await login(app, "admin@acme.test");
+
+    const upload = await app.inject({
+      method: "POST",
+      url: "/documents/document_acme_policy/versions",
+      headers: { cookie: memberCookie, "x-tenant-id": "tenant_acme" },
+      payload: pdfUploadPayload()
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/document-versions/${upload.json().version.id}/scan-result`,
+      headers: internalWorkerHeaders(adminCookie, "tenant_acme"),
+      payload: { scanStatus: 123 }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "invalid_request_body" });
   });
 
   it("keeps blocked files unavailable for download", async () => {
@@ -1525,6 +1608,26 @@ describe("phase 1 auth and tenant foundation", () => {
     });
   });
 
+  it("rejects invalid share link body types", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const memberCookie = await login(app, "member@acme.test");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/share-links",
+      headers: { cookie: memberCookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        documentId: "document_acme_policy",
+        maxDownloads: "one"
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "invalid_request_body" });
+    expect(store.shareLinks).toHaveLength(0);
+  });
+
   it("creates API keys with one-time values and stores only hashes", async () => {
     const store = createDemoStore();
     const app = buildApp({ store });
@@ -1564,6 +1667,26 @@ describe("phase 1 auth and tenant foundation", () => {
 
     expect(listResponse.statusCode).toBe(200);
     expect(listResponse.json().apiKeys[0]).not.toHaveProperty("keyHash");
+  });
+
+  it("rejects invalid API key body types", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const ownerCookie = await login(app, "owner@acme.test");
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/api-keys",
+      headers: { cookie: ownerCookie, "x-tenant-id": "tenant_acme" },
+      payload: {
+        name: "Bad Integration",
+        scopes: "documents:read"
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(response.json()).toEqual({ error: "invalid_request_body" });
+    expect(store.apiKeys).toHaveLength(0);
   });
 
   it("uses scoped API keys for external document reads and denies missing write scope", async () => {
