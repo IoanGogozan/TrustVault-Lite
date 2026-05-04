@@ -33,7 +33,7 @@ Relevant events:
 - Share link tokens use opaque `tv_share_<linkId>.<secret>` values and do not encode tenant IDs.
 - Stored records contain only the secret hash in `token_hash`.
 - Links can expire, enforce `maxDownloads`, and be revoked.
-- Public share link responses include expiring download metadata only.
+- Public share link responses use a separate public DTO with file metadata and expiry only; they do not expose tenant IDs, document IDs, version IDs, creator IDs, storage keys, or token hashes.
 - Share link creation requires update access to the target document.
 - Public link usage remains tenant-scoped during lookup.
 
@@ -65,8 +65,9 @@ External API:
 
 - `GET /audit-events` supports filtering by `actorType`, `action`, `result`, and `limit`.
 - `GET /security-dashboard` requires `security:read`.
+- Authentication, logout, invitation creation, invitation acceptance, and membership role changes are recorded as audit events.
 - Dashboard metrics include MFA coverage, access denied events, file scan status, active API keys, and active share links.
-- Risky events highlight denied access, API key lifecycle changes, share link activity, and blocked file scans.
+- Risky events highlight denied access, authentication activity, invitation activity, role changes, API key lifecycle changes, share link activity, and blocked file scans.
 - Dashboard responses remain tenant-scoped and do not expose secrets, raw tokens, API key hashes, or storage keys.
 
 ## Browser and API Hardening

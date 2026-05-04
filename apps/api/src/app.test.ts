@@ -268,8 +268,9 @@ describe("phase 1 auth and tenant foundation", () => {
     });
   });
 
-  it("revokes sessions on logout", async () => {
-    const app = buildApp({ store: createDemoStore() });
+  it("revokes sessions on logout and records auth audit events", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
     const cookie = await login(app, "owner@acme.test");
 
     const logout = await app.inject({
@@ -287,6 +288,16 @@ describe("phase 1 auth and tenant foundation", () => {
     });
 
     expect(me.statusCode).toBe(401);
+    expect(store.auditEvents.map((event) => event.action)).toEqual(
+      expect.arrayContaining(["auth.login_success", "auth.logout"])
+    );
+    expect(store.auditEvents.at(-1)).toMatchObject({
+      tenantId: "tenant_acme",
+      actorUserId: "user_owner_acme",
+      action: "auth.logout",
+      entityType: "session",
+      result: "success"
+    });
   });
 
   it("creates a tenant and assigns owner membership to the current user", async () => {
@@ -476,8 +487,9 @@ describe("phase 1 auth and tenant foundation", () => {
     );
   });
 
-  it("allows owners to invite a new member", async () => {
-    const app = buildApp({ store: createDemoStore() });
+  it("allows owners to invite a new member and records an audit event", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
     const cookie = await login(app, "owner@acme.test");
 
     const response = await app.inject({
@@ -497,6 +509,16 @@ describe("phase 1 auth and tenant foundation", () => {
       }
     });
     expect(response.json().inviteToken).toEqual(expect.stringMatching(/^invite_/));
+    expect(store.auditEvents.at(-1)).toMatchObject({
+      action: "invitation.created",
+      entityType: "invitation",
+      entityId: response.json().invitation.id,
+      result: "success",
+      metadata: expect.objectContaining({
+        email: "external-auditor@acme.test",
+        role: "auditor"
+      })
+    });
   });
 
   it("denies invitation creation for viewers", async () => {
@@ -513,21 +535,20 @@ describe("phase 1 auth and tenant foundation", () => {
 
     expect(response.statusCode).toBe(403);
     expect(response.json()).toEqual({ error: "permission_denied" });
-    expect(store.auditEvents).toEqual([
-      expect.objectContaining({
-        action: "authorization.denied",
-        entityType: "invitation",
-        result: "failure",
-        metadata: expect.objectContaining({
-          requestedAction: "members:invite",
-          reason: "permission_missing"
-        })
+    expect(store.auditEvents.at(-1)).toMatchObject({
+      action: "authorization.denied",
+      entityType: "invitation",
+      result: "failure",
+      metadata: expect.objectContaining({
+        requestedAction: "members:invite",
+        reason: "permission_missing"
       })
-    ]);
+    });
   });
 
-  it("accepts an invitation and creates an active membership", async () => {
-    const app = buildApp({ store: createDemoStore() });
+  it("accepts an invitation creates a membership and records audit events", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
     const ownerCookie = await login(app, "owner@acme.test");
 
     const invitation = await app.inject({
@@ -569,6 +590,25 @@ describe("phase 1 auth and tenant foundation", () => {
         role: "member"
       })
     ]);
+    expect(store.auditEvents.map((event) => event.action)).toEqual(
+      expect.arrayContaining(["invitation.created", "invitation.accepted", "auth.login_success"])
+    );
+    expect(store.auditEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tenantId: "tenant_acme",
+          actorUserId: expect.any(String),
+          action: "invitation.accepted",
+          entityType: "invitation",
+          entityId: invitation.json().invitation.id,
+          result: "success",
+          metadata: expect.objectContaining({
+            role: "member",
+            membershipId: expect.stringMatching(/^membership_/)
+          })
+        })
+      ])
+    );
   });
 
   it("rejects invalid invitation tokens", async () => {
@@ -609,6 +649,17 @@ describe("phase 1 auth and tenant foundation", () => {
     expect(
       store.memberships.find((membership) => membership.id === "membership_acme_member")?.role
     ).toBe("viewer");
+    expect(store.auditEvents.at(-1)).toMatchObject({
+      action: "members.role_changed",
+      entityType: "membership",
+      entityId: "membership_acme_member",
+      result: "success",
+      metadata: expect.objectContaining({
+        targetUserId: "user_member_acme",
+        previousRole: "member",
+        nextRole: "viewer"
+      })
+    });
   });
 
   it("allows admins to update non-owner member roles", async () => {
@@ -897,18 +948,22 @@ describe("phase 1 auth and tenant foundation", () => {
     });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json().auditEvents).toEqual([
-      expect.objectContaining({
-        tenantId: "tenant_acme",
-        actorType: "user",
-        action: "document.deleted",
-        entityType: "document",
-        entityId: "document_acme_policy",
-        result: "success"
-      })
-    ]);
-    expect(response.json().auditEvents[0]).not.toHaveProperty("ipHash");
-    expect(response.json().auditEvents[0]).not.toHaveProperty("userAgent");
+    expect(response.json().auditEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tenantId: "tenant_acme",
+          actorType: "user",
+          action: "document.deleted",
+          entityType: "document",
+          entityId: "document_acme_policy",
+          result: "success"
+        })
+      ])
+    );
+    for (const auditEvent of response.json().auditEvents) {
+      expect(auditEvent).not.toHaveProperty("ipHash");
+      expect(auditEvent).not.toHaveProperty("userAgent");
+    }
   });
 
   it("denies audit event reads for members", async () => {
@@ -1357,11 +1412,21 @@ describe("phase 1 auth and tenant foundation", () => {
 
     expect(firstUse.statusCode).toBe(200);
     expect(firstUse.json().download).toMatchObject({
-      documentId: "document_acme_policy",
       originalFilename: "security-policy.pdf",
       expiresInSeconds: 300
     });
+    expect(firstUse.json().download).not.toHaveProperty("documentId");
+    expect(firstUse.json().download).not.toHaveProperty("versionId");
     expect(firstUse.json().download).not.toHaveProperty("storageKey");
+    expect(firstUse.json().shareLink).toMatchObject({
+      permission: "download",
+      maxDownloads: 1,
+      downloadCount: 1
+    });
+    expect(firstUse.json().shareLink).not.toHaveProperty("id");
+    expect(firstUse.json().shareLink).not.toHaveProperty("tenantId");
+    expect(firstUse.json().shareLink).not.toHaveProperty("documentId");
+    expect(firstUse.json().shareLink).not.toHaveProperty("createdBy");
     expect(firstUse.json().shareLink.downloadCount).toBe(1);
     expect(store.auditEvents.at(-1)).toMatchObject({
       action: "share_link.used",

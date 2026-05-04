@@ -271,9 +271,12 @@ describe.skipIf(!runDbTests)("PostgreSQL document RLS integration", () => {
 
     expect(publicUseResponse.statusCode).toBe(200);
     expect(publicUseResponse.json().download).toMatchObject({
-      documentId: tenantADocumentId,
       originalFilename: "database-evidence.pdf"
     });
+    expect(publicUseResponse.json().download).not.toHaveProperty("documentId");
+    expect(publicUseResponse.json().download).not.toHaveProperty("versionId");
+    expect(publicUseResponse.json().shareLink).not.toHaveProperty("tenantId");
+    expect(publicUseResponse.json().shareLink).not.toHaveProperty("documentId");
 
     const revokeResponse = await app.inject({
       method: "DELETE",

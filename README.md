@@ -82,9 +82,9 @@ trustvault-lite/
 - PostgreSQL RLS migration and database-backed cross-tenant tests.
 - Project and document lifecycle with mock scan processing.
 - Private storage abstraction and expiring download metadata.
-- Share links with hashed tokens, expiry, revocation, and max-download controls.
+- Share links with opaque hashed tokens, public-safe responses, expiry, revocation, and max-download controls.
 - API keys with hashed storage, one-time display, scopes, expiry, revocation, and external API usage.
-- Audit events and security dashboard for security-relevant activity.
+- Audit events and security dashboard for security-relevant activity, including auth, invitation, role-change, API key, share-link, and document lifecycle events.
 - Browser/API hardening with CSP, security headers, CORS, CSRF, rate limits, shape validation, and log redaction.
 - GitHub Actions CI and security workflows.
 

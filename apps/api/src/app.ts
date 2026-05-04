@@ -185,6 +185,15 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
     const session = createSession(store, user.id);
     setSessionCookie(reply, session.id);
+    appendUserMembershipAuditEvents(store, request, user, {
+      action: "auth.login_success",
+      entityType: "session",
+      entityId: session.id,
+      result: "success",
+      metadata: {
+        authMethod: "dev-login"
+      }
+    });
 
     return reply.code(204).send();
   });
@@ -198,6 +207,15 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
     revokeSession(store, request.auth.session.id);
     clearSessionCookie(reply);
+    appendUserMembershipAuditEvents(store, request, request.auth.user, {
+      action: "auth.logout",
+      entityType: "session",
+      entityId: request.auth.session.id,
+      result: "success",
+      metadata: {
+        reason: "user_requested"
+      }
+    });
 
     return reply.code(204).send();
   });
@@ -515,7 +533,19 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       return;
     }
 
+    const previousRole = targetMembership.role;
     targetMembership.role = nextRole;
+    appendAuditEvent(store, request, {
+      action: "members.role_changed",
+      entityType: "membership",
+      entityId: targetMembership.id,
+      result: "success",
+      metadata: {
+        targetUserId: targetMembership.userId,
+        previousRole,
+        nextRole
+      }
+    });
 
     return {
       membership: {
@@ -950,6 +980,17 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     };
 
     store.invitations.push(invitation);
+    appendAuditEvent(store, request, {
+      action: "invitation.created",
+      entityType: "invitation",
+      entityId: invitation.id,
+      result: "success",
+      metadata: {
+        email: invitation.email,
+        role: invitation.role,
+        expiresAt: invitation.expiresAt.toISOString()
+      }
+    });
 
     return reply.code(201).send({
       invitation: {
@@ -986,21 +1027,48 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
     const user = findOrCreateInvitedUser(store, invitation.email, request.body.name);
 
-    store.memberships.push({
+    const membership = {
       id: `membership_${randomUUID()}`,
       tenantId: invitation.tenantId,
       userId: user.id,
       role: invitation.role,
-      status: "active",
+      status: "active" as const,
       mfaRequired: true,
       createdAt: new Date()
-    });
+    };
+
+    store.memberships.push(membership);
 
     invitation.status = "accepted";
     invitation.acceptedBy = user.id;
 
     const session = createSession(store, user.id);
     setSessionCookie(reply, session.id);
+    appendAuditEventForTenant(store, request, {
+      tenantId: invitation.tenantId,
+      actorUserId: user.id,
+      actorType: "user",
+      action: "invitation.accepted",
+      entityType: "invitation",
+      entityId: invitation.id,
+      result: "success",
+      metadata: {
+        role: invitation.role,
+        membershipId: membership.id
+      }
+    });
+    appendAuditEventForTenant(store, request, {
+      tenantId: invitation.tenantId,
+      actorUserId: user.id,
+      actorType: "user",
+      action: "auth.login_success",
+      entityType: "session",
+      entityId: session.id,
+      result: "success",
+      metadata: {
+        authMethod: "invite_accept"
+      }
+    });
 
     return reply.code(200).send({
       user: {
@@ -1095,15 +1163,13 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
     return {
       download: {
-        documentId: document.id,
-        versionId: version.id,
         originalFilename: version.originalFilename,
         mimeType: version.mimeType,
         sizeBytes: version.sizeBytes,
         expiresInSeconds: 300,
         expiresAt: signedDownload.expiresAt.toISOString()
       },
-      shareLink: toShareLinkResponse(usedShareLink ?? shareLink)
+      shareLink: toPublicShareLinkResponse(usedShareLink ?? shareLink)
     };
   });
 
@@ -1913,6 +1979,64 @@ function appendAuditEvent(
   });
 }
 
+function appendUserMembershipAuditEvents(
+  store: AppStore,
+  request: FastifyRequest,
+  user: User,
+  input: {
+    action: string;
+    entityType: string;
+    entityId?: string;
+    result: "success" | "failure";
+    metadata: Record<string, unknown>;
+  }
+): void {
+  const tenantIds = new Set(
+    store.memberships
+      .filter((membership) => membership.userId === user.id && membership.status === "active")
+      .map((membership) => membership.tenantId)
+  );
+
+  for (const tenantId of tenantIds) {
+    appendAuditEventForTenant(store, request, {
+      tenantId,
+      actorUserId: user.id,
+      actorType: "user",
+      ...input
+    });
+  }
+}
+
+function appendAuditEventForTenant(
+  store: AppStore,
+  request: FastifyRequest,
+  input: {
+    tenantId: string;
+    actorUserId?: string;
+    actorType: AuditActorType;
+    action: string;
+    entityType: string;
+    entityId?: string;
+    result: "success" | "failure";
+    metadata: Record<string, unknown>;
+  }
+): void {
+  store.auditEvents.push({
+    id: `audit_${randomUUID()}`,
+    tenantId: input.tenantId,
+    ...(input.actorUserId ? { actorUserId: input.actorUserId } : {}),
+    actorType: input.actorType,
+    action: input.action,
+    entityType: input.entityType,
+    ...(input.entityId ? { entityId: input.entityId } : {}),
+    result: input.result,
+    ipHash: hashSecret(request.ip),
+    userAgent: request.headers["user-agent"] ?? "unknown",
+    metadata: redactAuditMetadata(input.metadata),
+    createdAt: new Date()
+  });
+}
+
 function appendPublicShareLinkAuditEvent(
   store: AppStore,
   request: FastifyRequest,
@@ -2236,9 +2360,13 @@ function buildSecurityAlerts(
 function isRiskySecurityEvent(event: AppStore["auditEvents"][number]): boolean {
   return (
     event.action === "authorization.denied" ||
+    event.action === "auth.login_success" ||
     event.action === "api_key.created" ||
     event.action === "api_key.revoked" ||
     event.action === "api_key.denied" ||
+    event.action === "invitation.created" ||
+    event.action === "invitation.accepted" ||
+    event.action === "members.role_changed" ||
     event.action === "share_link.created" ||
     event.action === "share_link.denied" ||
     event.action === "document.scan_blocked"
@@ -2268,6 +2396,20 @@ function toShareLinkResponse(shareLink: {
     ...(shareLink.revokedAt ? { revokedAt: shareLink.revokedAt.toISOString() } : {}),
     createdBy: shareLink.createdBy,
     createdAt: shareLink.createdAt.toISOString()
+  };
+}
+
+function toPublicShareLinkResponse(shareLink: {
+  permission: "download";
+  expiresAt: Date;
+  maxDownloads?: number;
+  downloadCount: number;
+}) {
+  return {
+    permission: shareLink.permission,
+    expiresAt: shareLink.expiresAt.toISOString(),
+    ...(shareLink.maxDownloads === undefined ? {} : { maxDownloads: shareLink.maxDownloads }),
+    downloadCount: shareLink.downloadCount
   };
 }
 
