@@ -1,6 +1,6 @@
 # Demo Accounts
 
-TrustVault Lite uses development-only accounts for portfolio walkthroughs. The `/auth/dev-login` endpoint is disabled in production mode.
+TrustVault Lite uses seeded accounts for portfolio walkthroughs. The `/auth/dev-login` endpoint is enabled in production only when the separate `DEMO_MODE=true` switch explicitly authorizes the controlled synthetic sandbox; otherwise it returns `404`.
 
 ## Accounts
 
@@ -24,7 +24,7 @@ TrustVault Lite uses development-only accounts for portfolio walkthroughs. The `
 
 ## Security Notes
 
-- Demo accounts are seeded in the in-memory development store.
+- Demo accounts are seeded in the in-memory sandbox store and reset when the API restarts.
 - No real passwords are used by the demo login flow.
 - Production identity is expected to use OIDC Authorization Code Flow with MFA or passkeys.
 - Tenant membership, role, and project scope are still enforced in the API for demo accounts.

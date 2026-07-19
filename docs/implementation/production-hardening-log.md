@@ -50,6 +50,14 @@ The operational checklist is tracked in `docs/operations/production-deployment.m
 ## 2026-07-19 — proxy-aware client identity
 
 - configured Fastify to trust exactly the single Caddy hop in front of the API;
-- ensured rate limits and audit IP hashes use the forwarded client identity instead of the Caddy container address;
+- ensured rate limits and audit IP hashes use the identity forwarded by the single trusted Caddy hop instead of the Caddy container address;
 - added a regression test proving different forwarded client IPs receive separate login rate-limit buckets;
 - documented that a CDN in front of Caddy requires its own trusted-proxy policy or DNS-only operation before the forwarded address can be treated as the end-user IP.
+
+## 2026-07-19 — documentation consolidation
+
+- aligned all documentation with the live in-memory runtime and the separately tested PostgreSQL/RLS path;
+- documented the actual Cloudflare, shared Caddy, SSH deployment, and inactive dedicated-runner state;
+- qualified mock scanning, non-blocking ZAP, non-durable audit data, and rollback behavior;
+- removed the stale definition-of-done checklist, uncreated portfolio-asset checklist, generic incident-response placeholder, and misleading mixed current/future SVG architecture diagram;
+- consolidated the maintained runtime architecture into `docs/security/architecture.md`.

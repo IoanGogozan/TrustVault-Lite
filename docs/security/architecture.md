@@ -1,127 +1,99 @@
 # Architecture
 
-## Context
+## Runtime scope
 
-TrustVault Lite is a portfolio demo for a secure multi-tenant evidence portal. The implemented local architecture uses a Next.js web app, a TypeScript API, PostgreSQL with RLS for database-backed tests, private object storage abstractions, an in-process scan queue/worker, audit events, and CI security workflows.
+TrustVault Lite is a controlled, synthetic portfolio sandbox. The live request path is Cloudflare, the shared Caddy edge, Next.js or Fastify, and one API instance. The API process uses in-memory adapters for sessions, rate limits, projects, documents, object content, scan jobs, share links, API keys, and audit events. Restarting the API resets that state.
 
-Production identity is intentionally not implemented in this controlled sandbox. `DEMO_MODE=true` explicitly enables seeded accounts even when `NODE_ENV=production`; a real product would use OIDC Authorization Code Flow with MFA or passkeys through an external identity provider.
+PostgreSQL runs on the home-server stack so migrations and the least-privileged application role are validated. PostgreSQL repositories and RLS policies are implemented and exercised by database-backed tests, but `server.ts` currently starts `buildApp()` with its default in-memory repositories. PostgreSQL must therefore not be described as the live sandbox's durable business-data store.
 
-## Implemented Component Diagram
-
-![TrustVault Lite security architecture](../assets/trustvault-security-architecture.svg)
+## Live component diagram
 
 ```mermaid
 flowchart LR
-  Browser[Browser] --> Web[Next.js Web App]
-  Web --> API[Secure API]
-  API --> Auth[Development Session Auth]
-  API --> Policy[Authorization Layer]
-  Policy --> DB[(PostgreSQL + RLS)]
-  API --> Storage[(Private Object Storage)]
-  API --> Queue[In-process Scan Queue]
-  Queue --> Worker[Mock Scan Worker]
-  Worker --> Storage
-  Worker --> DB
-  API --> Audit[(Audit Events)]
-  API --> Logs[Structured Logs]
+  Browser --> Cloudflare[Cloudflare proxy]
+  Cloudflare --> Caddy[Shared Caddy edge]
+  Caddy --> Web[Next.js web]
+  Caddy --> API[Fastify API]
+  API --> Auth[Seeded sessions + CSRF]
+  API --> Policy[RBAC / ABAC policy]
+  API --> Memory[(In-memory state and private objects)]
+  API --> Scan[In-process mock scan queue]
+  Scan --> Memory
+  Migrate[One-shot migration] --> Postgres[(PostgreSQL + RLS schema)]
+  Tests[Database-backed tests] --> Postgres
 ```
 
-## Production Extension Points
+Only Caddy publishes host ports 80/443. Web and API expose ports only to Docker networks; PostgreSQL is attached only to the internal data network. Caddy blocks public `/api/internal/*` routes and sends `/api/*` to Fastify after stripping the `/api` prefix.
 
-The codebase includes explicit boundaries for production-grade components without claiming they are wired in the local demo:
+Fastify trusts exactly one proxy hop: Caddy. Because Cloudflare currently precedes Caddy, reliable end-user IP attribution additionally requires Caddy to trust only Cloudflare's published ranges with strict parsing and requires direct-origin access to be restricted. DNS-only operation removes that extra trust boundary.
 
-- OIDC provider for production authentication.
-- Redis-compatible rate limiter adapter for multi-instance rate limits.
-- S3/MinIO-compatible storage adapter.
-- ClamAV or equivalent scanner behind the scan worker boundary.
-
-## Demo Auth Flow
+## Authentication and session flow
 
 ```mermaid
 sequenceDiagram
-  participant U as User
-  participant W as Web
-  participant A as API
+  participant U as Browser
+  participant W as Next.js
+  participant A as Fastify API
 
-  U->>W: Select seeded demo account
+  U->>W: Select seeded account
   W->>A: POST /auth/dev-login
-  A->>A: Create server-side session
-  A-->>W: HttpOnly Secure SameSite cookie + CSRF cookie
+  A->>A: Require DEMO_MODE=true
+  A->>A: Create in-memory server session
+  A-->>U: HttpOnly Secure SameSite session cookie + CSRF cookie
 ```
 
-The `/auth/dev-login` endpoint is available only when `DEMO_MODE=true`. Public sandbox mode disables organization and invitation creation and must never contain real customer data.
+`DEMO_MODE` is independent from `NODE_ENV`. In production the seeded login returns `404` unless `DEMO_MODE=true`. The public sandbox also returns `404` for organization and invitation creation. No real passwords, customer identities, or customer data are supported.
 
-## Tenant Request Flow
+## Tenant request flow
 
 ```mermaid
 sequenceDiagram
-  participant W as Web/API Client
-  participant A as API
-  participant P as Policy Layer
-  participant D as PostgreSQL
+  participant C as Browser or API client
+  participant A as Fastify API
+  participant P as Policy layer
+  participant R as Tenant-scoped repository
 
-  W->>A: Request with selected tenant
-  A->>A: Authenticate actor
-  A->>A: Verify active membership
-  A->>P: can(actor, action, resource)
-  P-->>A: allow/deny
-  A->>D: set_config(app.current_tenant_id)
-  D-->>A: tenant-scoped result
-  A-->>W: Response DTO allowlist
+  C->>A: Request with tenant context
+  A->>A: Authenticate actor and active membership
+  A->>P: Evaluate action and resource
+  P-->>A: Allow or deny
+  A->>R: Tenant-scoped operation
+  R-->>A: Allowed fields only
+  A-->>C: DTO response
 ```
 
-## Upload Flow
+In the live sandbox `R` is an in-memory repository. In database-backed tests it is a PostgreSQL repository that sets `app.current_tenant_id` so RLS provides defense in depth. Application authorization remains mandatory in both modes.
 
-```mermaid
-sequenceDiagram
-  participant U as User
-  participant A as API
-  participant S as Storage
-  participant Q as Queue
-  participant W as Worker
-  participant DB as Database
+## Synthetic upload and scan flow
 
-  U->>A: Upload base64 demo payload
-  A->>A: Authz + file validation
-  A->>S: Store private object
-  A->>DB: Create version pending_scan
-  A->>Q: Enqueue scan job
-  U->>A: Request authenticated mock scan
-  Q->>W: Process job
-  W->>S: Read object
-  W->>W: Mock scan
-  W->>DB: Mark clean or blocked
-```
+1. An authenticated actor submits a base64 JSON PDF payload.
+2. The API checks tenant authorization, request shape, extension, MIME type, PDF magic bytes, and size.
+3. The private in-memory storage adapter stores the object and the version enters `pending_scan`.
+4. The API queues an in-process tenant-scoped scan job.
+5. The browser calls the authenticated document scan action; it never receives the internal worker token.
+6. The mock scanner marks known demo malware markers as `blocked` and other valid demo content as `clean`.
+7. Only clean versions can be downloaded through authenticated or public proxy endpoints.
 
-## Download Flow
+This demonstrates the control boundary, not real malware detection. Multipart transport, durable object storage, and ClamAV are not implemented.
 
-1. Actor requests download metadata or proxy file content.
-2. API authenticates the actor or validates the public share token.
-3. API verifies tenant, role, project, share-link state, and scan status.
-4. API refuses files that are not `clean`.
-5. API streams clean content through a proxy endpoint without exposing storage keys.
-6. API writes an audit event.
+## Implemented data model path
 
-## Data Model
+The migration and PostgreSQL repositories cover `users`, `tenants`, `memberships`, `projects`, `documents`, `document_versions`, `share_links`, `api_keys`, and `audit_events`. Their RLS behavior is verified in CI. The live sandbox keeps corresponding domain records in memory.
 
-Main tables:
+## Extension points, not runtime components
 
-- `users`
-- `tenants`
-- `memberships`
-- `projects`
-- `documents`
-- `document_versions`
-- `share_links`
-- `api_keys`
-- `audit_events`
-## Browser Hardening
+- OIDC Authorization Code Flow with MFA or passkeys;
+- Redis-compatible durable/distributed rate limiting;
+- S3/MinIO-compatible private object storage;
+- ClamAV or another real malware scanner;
+- multipart or presigned upload transport;
+- durable sessions, queues, audit storage, and multi-instance operation.
 
-Implemented headers:
+## Browser and edge hardening
 
-- `Content-Security-Policy`
-- `Strict-Transport-Security` in production web responses
-- `X-Content-Type-Options: nosniff`
-- `X-Frame-Options: DENY`
-- `Referrer-Policy: strict-origin-when-cross-origin`
-- `Permissions-Policy`
+- same-origin web and API publication;
+- CSP, HSTS, `nosniff`, frame denial, referrer policy, and permissions policy;
+- secure cookies plus origin and CSRF validation for mutating session requests;
+- validated production origin and strict demo-mode configuration;
+- request-body limits, stable errors, log redaction, and proxy-aware rate limits;
+- no public API, web, PostgreSQL, Docker daemon, or Caddy admin ports beyond the shared edge.

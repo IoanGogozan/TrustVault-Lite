@@ -8,6 +8,7 @@ This document summarizes the implemented demo controls that are useful for portf
 - Document versions start as `pending_scan`.
 - The API enqueues a tenant-scoped scan job.
 - The mock worker marks files as `blocked` when content contains `eicar` or `malware-demo`; otherwise the version becomes `clean`.
+- This is a deterministic demonstration of scan-state enforcement, not real malware detection.
 - Downloads are allowed only for `clean` versions.
 - Responses never expose private storage keys.
 
@@ -22,7 +23,7 @@ Relevant events:
 
 ## Private Storage Boundary
 
-- `InMemoryPrivateObjectStorage` supports local tests and demos.
+- `InMemoryPrivateObjectStorage` is the active storage adapter for local use and the public sandbox.
 - `S3CompatiblePrivateObjectStorage` defines an adapter boundary for MinIO or S3-compatible clients.
 - The S3-compatible adapter accepts a small client interface instead of importing a cloud SDK directly.
 - API responses expose expiring download metadata, not object paths, bucket names, or storage keys.
@@ -101,7 +102,7 @@ External API:
 ## DevSecOps
 
 - CI workflow runs install, lint, typecheck, tests, PostgreSQL-backed tests, and build.
-- Security workflow runs dependency scanning, secret scanning, CodeQL SAST, Trivy scanning, OWASP ZAP baseline, and a security report artifact.
+- Security workflow runs dependency auditing, Gitleaks, CodeQL SAST, Trivy filesystem/configuration scanning, a non-blocking OWASP ZAP baseline, and a security report artifact.
 - Dependabot is configured for npm and GitHub Actions updates.
 - ZAP is non-blocking for the demo until a stable baseline is triaged.
 
@@ -114,3 +115,5 @@ External API:
 - Upload transport uses base64 JSON for demo simplicity; production upload transport should use multipart or presigned uploads.
 - Malware scanning uses a documented mock worker instead of ClamAV.
 - Redis and S3-compatible adapters are present as boundaries, but local demo defaults remain in-memory.
+- PostgreSQL repositories and RLS policies are implemented and tested, but the live `server.ts` bootstrap uses the in-memory repository defaults.
+- Fastify trusts the single Caddy hop; Cloudflare client-IP attribution remains an operational boundary documented in the risk register and deployment runbook.

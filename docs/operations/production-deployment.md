@@ -2,13 +2,13 @@
 
 ## Status
 
-Target URL: `https://vault.norvix.no`
+Live URL: `https://vault.norvix.no`
 
 This deployment is a controlled, ephemeral portfolio sandbox, not a production SaaS service. `NODE_ENV=production` enables runtime hardening while the separate `DEMO_MODE=true` switch explicitly enables seeded demo login. The sandbox accepts synthetic data only, runs one API instance, keeps application state in memory, and resets on restart.
 
 ## Architecture
 
-Internet traffic reaches only Caddy on TCP 80/443 and UDP 443. Caddy obtains and renews the TLS certificate, routes `/api/*` to Fastify, and routes all other requests to Next.js. Web and API share one browser origin, reducing CORS and cookie complexity. PostgreSQL is attached only to an internal Docker network and has no host port.
+Public traffic currently traverses Cloudflare before reaching Caddy on TCP 80/443 and UDP 443. Caddy obtains and renews the origin TLS certificate, routes `/api/*` to Fastify, and routes all other requests to Next.js. Web and API share one browser origin, reducing CORS and cookie complexity. PostgreSQL is attached only to an internal Docker network and has no host port; it validates migrations and the RLS implementation path but is not the live business-state adapter.
 
 The standalone production stack is defined in `infra/docker/docker-compose.production.yml`. The actual Norvix home server already runs a shared Caddy edge, so it uses `infra/docker/docker-compose.home-server.yml` and the site fragment `infra/caddy/vault.norvix.no.caddy` instead. Never start the standalone Caddy stack on that server because ports 80/443 are already owned by the shared proxy.
 
@@ -28,8 +28,8 @@ The standalone stack contains:
 - Organization and invitation creation return `404` in the public sandbox.
 - The UI clearly states synthetic-only use and restart-based reset behavior.
 - Only one API replica runs. In-memory sessions, rate limits, objects, scan jobs, and audit events are intentionally non-durable.
-- Unit/API tests, PostgreSQL RLS integration tests, type checks, production builds, container health checks, and an unauthenticated DAST baseline pass.
-- DNS, port forwarding, firewall rules, TLS issuance, restart behavior, and log redaction are verified from outside the home network.
+- Unit/API tests, PostgreSQL RLS integration tests, type checks, production builds, and container health checks pass. The CI ZAP baseline is non-blocking and must be reviewed separately.
+- Public DNS, Cloudflare routing, TLS issuance, security headers, health, and the public internal-route block have been verified. An independent test from a network outside the home LAN remains part of release acceptance.
 
 OIDC, Redis, S3, ClamAV, multipart uploads, multi-instance scaling, and durable application state are documented extension points, not requirements for this synthetic portfolio sandbox.
 
@@ -52,7 +52,7 @@ Detected server architecture:
 - shared Caddy container is the only public listener on 80/443;
 - external Docker network `proxy` connects Caddy to applications;
 - application folders live below `/srv/projects`;
-- a self-hosted GitHub Actions runner is installed;
+- a self-hosted GitHub Actions runner dedicated to the separate `norvix` repository is installed; no TrustVault runner is installed;
 - SSH is key-only and restricted to the LAN.
 
 TrustVault uses the aliases `trustvault-web` and `trustvault-api` on the external `proxy` network. PostgreSQL and the migration job remain only on the internal `data` network. The home-server Compose file publishes no host ports.
@@ -70,7 +70,7 @@ nano /srv/projects/trustvault/.env
 
 Also create a Cloudflare `A` record for `vault.norvix.no` pointing to the current public IP, initially set to **DNS only**. Do not add `AAAA` unless IPv6 routing and firewall rules are verified.
 
-The workflow `.github/workflows/deploy-home-server.yml` is manual-only. It refuses non-`main` refs, preserves the server `.env`, validates the external `proxy` network, deploys the application, installs the Caddy site fragment, validates the full Caddy configuration, reloads Caddy, and checks API health from the proxy network.
+The workflow `.github/workflows/deploy-home-server.yml` is manual-only. It refuses non-`main` refs, preserves the server `.env`, validates the external `proxy` network, deploys the application, installs the Caddy site fragment, validates the full Caddy configuration, reloads Caddy, and checks API health from the proxy network. It is currently inactive because a dedicated trusted TrustVault runner has intentionally not been installed for this public repository. The initial deployment and current updates use key-only SSH from the trusted LAN.
 
 ## Secret preparation
 
@@ -92,7 +92,7 @@ Required values:
 
 - `APP_DOMAIN=vault.norvix.no`;
 - `DEMO_MODE=true`: explicit authorization to expose seeded synthetic accounts;
-- `ACME_EMAIL`: operational address for certificate notices;
+- `ACME_EMAIL`: operational address for the standalone Caddy stack; the home server uses the shared Caddy account configuration;
 - `POSTGRES_PASSWORD`: database owner credential;
 - `APP_DATABASE_PASSWORD`: least-privileged application role credential;
 - `INTERNAL_WORKER_TOKEN`: independent random worker credential of at least 32 bytes.
@@ -126,7 +126,7 @@ docker compose \
 
 Then verify container health, migration completion, HTTPS redirect, certificate chain, security headers, demo login, denied role actions, synthetic upload/download scanning, API-key/share-link revocation, and audit creation.
 
-On the Norvix home server, use the manual **Deploy Home Server Sandbox** GitHub Actions workflow after merging to `main`; do not run the standalone Compose command above.
+On the Norvix home server, do not run the standalone Compose command above. Until a dedicated runner is approved and installed, deploy a reviewed `main` revision through key-only SSH from the trusted LAN, preserve `/srv/projects/trustvault/.env`, use `infra/docker/docker-compose.home-server.yml`, validate the shared Caddy configuration, and then verify the public endpoint.
 
 ## Reset and recovery
 
@@ -134,4 +134,4 @@ Application state is deliberately disposable and must not be presented as backed
 
 ## Rollback
 
-Application images must be tagged immutably for releases. Database migrations must be reviewed for backward compatibility before deployment. Rollback means restoring the previous image tag; if a migration is destructive, restore the tested pre-deploy database backup instead of attempting an ad-hoc downgrade.
+The current home-server process builds local images from a reviewed `main` commit and does not yet publish immutable release tags. Record the deployed Git commit. To roll back application code, sync the previous known-good commit and rebuild the home-server Compose stack. Review migrations for backward compatibility before deployment; no destructive migration should be released without a tested PostgreSQL backup and restore procedure.
