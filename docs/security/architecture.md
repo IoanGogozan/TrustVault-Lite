@@ -4,7 +4,7 @@
 
 TrustVault Lite is a portfolio demo for a secure multi-tenant evidence portal. The implemented local architecture uses a Next.js web app, a TypeScript API, PostgreSQL with RLS for database-backed tests, private object storage abstractions, an in-process scan queue/worker, audit events, and CI security workflows.
 
-Production identity is intentionally not implemented in this demo. The production path is OIDC Authorization Code Flow with MFA or passkeys through an external identity provider.
+Production identity is intentionally not implemented in this controlled sandbox. `DEMO_MODE=true` explicitly enables seeded accounts even when `NODE_ENV=production`; a real product would use OIDC Authorization Code Flow with MFA or passkeys through an external identity provider.
 
 ## Implemented Component Diagram
 
@@ -49,7 +49,7 @@ sequenceDiagram
   A-->>W: HttpOnly Secure SameSite cookie + CSRF cookie
 ```
 
-The `/auth/dev-login` endpoint is disabled in production mode.
+The `/auth/dev-login` endpoint is available only when `DEMO_MODE=true`. Public sandbox mode disables organization and invitation creation and must never contain real customer data.
 
 ## Tenant Request Flow
 
@@ -86,6 +86,7 @@ sequenceDiagram
   A->>S: Store private object
   A->>DB: Create version pending_scan
   A->>Q: Enqueue scan job
+  U->>A: Request authenticated mock scan
   Q->>W: Process job
   W->>S: Read object
   W->>W: Mock scan

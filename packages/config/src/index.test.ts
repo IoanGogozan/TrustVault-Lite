@@ -13,8 +13,25 @@ describe("readBaseConfig", () => {
       readBaseConfig({ NODE_ENV: "production", PUBLIC_ORIGIN: "https://vault.norvix.no" })
     ).toMatchObject({
       env: "production",
+      demoMode: false,
       publicOrigin: "https://vault.norvix.no"
     });
+  });
+
+  it("enables demo mode independently from the production environment", () => {
+    expect(
+      readBaseConfig({
+        NODE_ENV: "production",
+        DEMO_MODE: "true",
+        PUBLIC_ORIGIN: "https://vault.norvix.no"
+      }).demoMode
+    ).toBe(true);
+  });
+
+  it("rejects ambiguous demo mode values", () => {
+    expect(() => readBaseConfig({ NODE_ENV: "test", DEMO_MODE: "yes" })).toThrow(
+      "DEMO_MODE must be either true or false"
+    );
   });
 
   it.each([

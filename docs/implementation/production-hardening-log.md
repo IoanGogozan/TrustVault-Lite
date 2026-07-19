@@ -24,4 +24,16 @@ Verification performed:
 - Compose interpolation and schema validation;
 - production container image builds (including correction of Linux workspace dependency linking found during image validation).
 
-Known gaps are tracked as release blockers in `docs/operations/production-deployment.md`. This milestone does not authorize public exposure.
+The operational checklist is tracked in `docs/operations/production-deployment.md`.
+
+## 2026-07-19 — controlled public sandbox
+
+- separated `DEMO_MODE` from `NODE_ENV` with strict startup validation;
+- enabled seeded login in production only through explicit demo configuration;
+- blocked organization and invitation creation in the public sandbox;
+- removed the internal worker token and internal scan endpoint from the browser flow;
+- added an authenticated, authorization-checked mock scan action for documents;
+- blocked `/api/internal/*` at Caddy;
+- added synthetic-data/reset warnings and a guided security-control walkthrough;
+- documented single-instance, in-memory operation as an intentional sandbox boundary;
+- added tests for production demo gating, locked sandbox mutations, and token-free scanning.

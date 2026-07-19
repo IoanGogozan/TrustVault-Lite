@@ -29,6 +29,7 @@ services:
       dockerfile: infra/docker/Dockerfile.web
       args:
         NEXT_PUBLIC_API_BASE_URL: /api
+        NEXT_PUBLIC_DEMO_MODE: ${DEMO_MODE:?DEMO_MODE is required}
     restart: unless-stopped
     init: true
     read_only: true
@@ -62,6 +63,7 @@ services:
       - /tmp:size=32m,mode=1777
     environment:
       NODE_ENV: production
+      DEMO_MODE: ${DEMO_MODE:?DEMO_MODE is required}
       APP_NAME: TrustVault Lite
       PORT: 4000
       PUBLIC_ORIGIN: https://${APP_DOMAIN:-vault.norvix.no}

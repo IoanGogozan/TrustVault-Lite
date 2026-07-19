@@ -76,7 +76,7 @@ External API:
 - API responses include baseline security headers.
 - The web app uses separate development and production CSP policies; production removes `unsafe-eval`.
 - Production web responses include HSTS.
-- CORS is allowlisted to local web origins.
+- CORS is allowlisted to the validated `PUBLIC_ORIGIN`; local origins are accepted only when no public origin is configured.
 - Browser-origin mutating session requests require `X-CSRF-Token`.
 - Browser-like mutating session requests with missing or unknown origins are rejected.
 - API key Bearer requests are excluded from CSRF checks.
@@ -94,7 +94,9 @@ External API:
 - Scan result updates require an internal worker token.
 - Scan job processing requires an internal worker token.
 - Local demos use `X-Internal-Worker-Token: trustvault-demo-worker`.
-- Production deployments should set `INTERNAL_WORKER_TOKEN` and keep scan endpoints off the public edge.
+- The browser never receives or transmits an internal worker token.
+- The demo UI invokes a tenant-scoped, authenticated document scan action governed by document update authorization.
+- Caddy returns `404` for `/api/internal/*`; production deployments still set `INTERNAL_WORKER_TOKEN` for non-browser operational calls.
 
 ## DevSecOps
 
@@ -105,8 +107,10 @@ External API:
 
 ## Known Demo Limits
 
-- Development login is used for local demo speed and is disabled in production mode.
-- Production identity is expected to use OIDC Authorization Code Flow with MFA or passkeys.
+- Seeded login is available only with explicit `DEMO_MODE=true`, independently from `NODE_ENV`.
+- The public sandbox is single-instance, in-memory, synthetic-only, and resets on restart.
+- Organization and invitation creation are disabled in the public production sandbox.
+- A real product is expected to use OIDC Authorization Code Flow with MFA or passkeys.
 - Upload transport uses base64 JSON for demo simplicity; production upload transport should use multipart or presigned uploads.
 - Malware scanning uses a documented mock worker instead of ClamAV.
 - Redis and S3-compatible adapters are present as boundaries, but local demo defaults remain in-memory.

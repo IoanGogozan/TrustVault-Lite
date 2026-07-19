@@ -3,6 +3,7 @@ export type AppEnvironment = "development" | "test" | "production";
 export type BaseConfig = {
   env: AppEnvironment;
   appName: string;
+  demoMode: boolean;
   publicOrigin?: string;
 };
 
@@ -14,6 +15,7 @@ export function readBaseConfig(env: NodeJS.ProcessEnv = process.env): BaseConfig
   }
 
   const publicOrigin = readPublicOrigin(env.PUBLIC_ORIGIN);
+  const demoMode = readBoolean(env.DEMO_MODE, appEnv !== "production", "DEMO_MODE");
 
   if (appEnv === "production" && !publicOrigin) {
     throw new Error("PUBLIC_ORIGIN is required in production");
@@ -22,8 +24,25 @@ export function readBaseConfig(env: NodeJS.ProcessEnv = process.env): BaseConfig
   return {
     env: appEnv,
     appName: env.APP_NAME ?? "TrustVault Lite",
+    demoMode,
     ...(publicOrigin ? { publicOrigin } : {})
   };
+}
+
+function readBoolean(value: string | undefined, defaultValue: boolean, name: string): boolean {
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  throw new Error(`${name} must be either true or false`);
 }
 
 function readPublicOrigin(value: string | undefined): string | undefined {

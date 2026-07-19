@@ -175,7 +175,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.get("/health", async () => ({ status: "ok", app: config.appName }));
 
   app.post<{ Body: { email?: string } }>("/auth/dev-login", async (request, reply) => {
-    if (config.env === "production") {
+    if (!config.demoMode) {
       return reply.code(404).send({ error: "not_found" });
     }
 
@@ -257,6 +257,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
 
   app.post<{ Body: { name?: string; slug?: string } }>("/tenants", async (request, reply) => {
+    if (isPublicSandbox(config)) {
+      return reply.code(404).send({ error: "not_found" });
+    }
+
     await requireAuth(store, request, reply);
 
     if (!request.auth) {
@@ -928,6 +932,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.post<{
     Body: { email?: string; role?: MembershipRole };
   }>("/tenant/invitations", async (request, reply) => {
+    if (isPublicSandbox(config)) {
+      return reply.code(404).send({ error: "not_found" });
+    }
+
     await requireTenantContext(store, request, reply);
 
     if (!request.tenantContext) {
@@ -1010,6 +1018,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.post<{
     Body: { token?: string; name?: string };
   }>("/invitations/accept", async (request, reply) => {
+    if (isPublicSandbox(config)) {
+      return reply.code(404).send({ error: "not_found" });
+    }
+
     const token = request.body.token;
 
     if (!token) {
@@ -1563,6 +1575,60 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     return reply.code(201).send({ version: toDocumentVersionResponse(version) });
   });
 
+  app.post<{ Params: { documentId: string } }>(
+    "/documents/:documentId/scan",
+    async (request, reply) => {
+      if (!config.demoMode) {
+        return reply.code(404).send({ error: "not_found" });
+      }
+
+      await requireTenantContext(store, request, reply);
+
+      if (!request.tenantContext) {
+        return;
+      }
+
+      const document = await documentRepository.findVisibleById(
+        toDocumentReadScope(request.tenantContext),
+        request.params.documentId
+      );
+
+      if (!document) {
+        return reply.code(404).send({ error: "document_not_found" });
+      }
+
+      const allowed = await requirePermission(store, request, reply, "documents:update", {
+        tenantId: document.tenantId,
+        projectId: document.projectId,
+        classification: document.classification,
+        entityType: "document",
+        entityId: document.id
+      });
+
+      if (!allowed) {
+        return;
+      }
+
+      const job = await scanQueue.processNext(
+        request.tenantContext.tenant.id,
+        request.params.documentId
+      );
+
+      if (!job) {
+        return reply.code(409).send({ error: "document_scan_not_queued" });
+      }
+
+      return {
+        scanJob: {
+          id: job.id,
+          documentId: job.documentId,
+          versionId: job.versionId,
+          status: job.status
+        }
+      };
+    }
+  );
+
   app.post<{
     Params: { versionId: string };
     Body: { scanStatus?: "clean" | "blocked" };
@@ -2060,6 +2126,11 @@ const requestShapeRules: RequestShapeRule[] = [
         contentBase64: z.string().optional()
       })
       .strict()
+  },
+  {
+    method: "POST",
+    pattern: /^\/documents\/[^/]+\/scan$/,
+    bodySchema: optionalStrictEmptyBodySchema
   },
   {
     method: "POST",
@@ -2889,4 +2960,8 @@ function isAllowedOrigin(origin: string, publicOrigin?: string): boolean {
   }
 
   return origin === "http://localhost:3000" || origin === "http://127.0.0.1:3000";
+}
+
+function isPublicSandbox(config: { env: string; demoMode: boolean }): boolean {
+  return config.env === "production" && config.demoMode;
 }

@@ -4,7 +4,7 @@
 
 Target URL: `https://vault.norvix.no`
 
-This repository now contains a validated production container foundation, but public deployment is intentionally blocked until production authentication and complete durable persistence are implemented and tested. Setting `NODE_ENV=development` to bypass this gate is unsafe because the development login does not require a password.
+This deployment is a controlled, ephemeral portfolio sandbox, not a production SaaS service. `NODE_ENV=production` enables runtime hardening while the separate `DEMO_MODE=true` switch explicitly enables seeded demo login. The sandbox accepts synthetic data only, runs one API instance, keeps application state in memory, and resets on restart.
 
 ## Architecture
 
@@ -18,16 +18,18 @@ The production stack is defined in `infra/docker/docker-compose.production.yml`:
 - `migrate`: one-shot migration job that must succeed before the API starts;
 - `postgres`: PostgreSQL 17 with a persistent named volume and no published port.
 
-## Release blockers
+## Public sandbox release gate
 
-- Replace the development-only email login with production authentication. The selected design must support strong password hashing or standards-based OIDC, MFA, generic login errors, throttling, session rotation, expiry, and revocation.
-- Persist users, tenants, memberships, sessions, invitations, audit events, scan jobs, rate-limit state, and every other domain record. Several routes still use the in-memory demo store directly.
-- Wire all existing PostgreSQL repositories in the production composition root.
-- Replace in-memory object storage with private S3-compatible storage and verify backup/restore.
-- Replace the marker-based demo scanner with an isolated malware scanning service and a durable queue.
-- Add frontend component/end-to-end tests and run an authenticated DAST pass.
-- Add database-aware readiness checks; `/health` currently proves only that the API process responds.
-- Complete restore testing, log retention, monitoring, alerting, and an upgrade/rollback rehearsal.
+- `NODE_ENV=production`, `DEMO_MODE=true`, and `PUBLIC_ORIGIN=https://vault.norvix.no` are set.
+- Web and API are served through the same Caddy origin; API and web ports are not published directly.
+- The browser bundle contains no internal worker token and Caddy blocks `/api/internal/*`.
+- Organization and invitation creation return `404` in the public sandbox.
+- The UI clearly states synthetic-only use and restart-based reset behavior.
+- Only one API replica runs. In-memory sessions, rate limits, objects, scan jobs, and audit events are intentionally non-durable.
+- Unit/API tests, PostgreSQL RLS integration tests, type checks, production builds, container health checks, and an unauthenticated DAST baseline pass.
+- DNS, port forwarding, firewall rules, TLS issuance, restart behavior, and log redaction are verified from outside the home network.
+
+OIDC, Redis, S3, ClamAV, multipart uploads, multi-instance scaling, and durable application state are documented extension points, not requirements for this synthetic portfolio sandbox.
 
 ## Host prerequisites
 
@@ -59,6 +61,7 @@ chmod 600 infra/docker/.env.production
 Required values:
 
 - `APP_DOMAIN=vault.norvix.no`;
+- `DEMO_MODE=true`: explicit authorization to expose seeded synthetic accounts;
 - `ACME_EMAIL`: operational address for certificate notices;
 - `POSTGRES_PASSWORD`: database owner credential;
 - `APP_DATABASE_PASSWORD`: least-privileged application role credential;
@@ -68,7 +71,7 @@ Compose environment variables are an interim local-server mechanism. Migration t
 
 ## Validation commands
 
-These commands validate the stack but must not be used for public release while blockers remain:
+Validate the rendered stack before every release:
 
 ```sh
 docker compose \
@@ -82,7 +85,7 @@ docker compose \
   build --pull
 ```
 
-Once the release gate is cleared, start with:
+Once the sandbox release gate is cleared, start with:
 
 ```sh
 docker compose \
@@ -91,11 +94,11 @@ docker compose \
   up -d
 ```
 
-Then verify container health, migration completion, HTTPS redirect, certificate chain, security headers, authentication, authorization boundaries, upload/download scanning, audit creation, backup, and restore.
+Then verify container health, migration completion, HTTPS redirect, certificate chain, security headers, demo login, denied role actions, synthetic upload/download scanning, API-key/share-link revocation, and audit creation.
 
-## Backup and recovery gate
+## Reset and recovery
 
-Before release, implement encrypted scheduled backups for PostgreSQL and object storage to a device or location independent of the server. A backup is not accepted until a restore into a clean environment succeeds and the restored tenant/document hashes are verified. Caddy certificate state can be recreated, but retaining its volume avoids unnecessary ACME issuance.
+Application state is deliberately disposable and must not be presented as backed up. Restarting the API resets seeded state and removes demo activity, limiting persistence of abuse. PostgreSQL migration data and Caddy state use volumes, but the public UI currently exercises the in-memory adapters. Never upload data that requires recovery.
 
 ## Rollback
 

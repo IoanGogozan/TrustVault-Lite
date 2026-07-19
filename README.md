@@ -138,9 +138,9 @@ The ZAP scan expects the web app to be available at `http://localhost:3000` on t
 
 ## Production Deployment
 
-The hardened home-server target is `https://vault.norvix.no`, fronted by Caddy on TCP 80/443 and UDP 443. The production container foundation and its current readiness gates are documented in [the production deployment runbook](docs/operations/production-deployment.md).
+The controlled public sandbox target is `https://vault.norvix.no`, fronted by Caddy on TCP 80/443 and UDP 443. `DEMO_MODE=true` explicitly enables seeded-account login independently of `NODE_ENV=production`; without it, the demo login returns `404`. The deployment checklist is documented in [the production deployment runbook](docs/operations/production-deployment.md).
 
-Do not expose the current build publicly until every item marked **release blocker** in that runbook is complete. Production mode intentionally disables the development login.
+The public sandbox accepts synthetic data only, runs as a single instance, resets its in-memory state on restart, and disables organization and invitation creation.
 
 ## Demo Accounts
 
@@ -175,6 +175,6 @@ See [demo accounts](docs/product/demo-accounts.md) for the role-by-role walkthro
 ## Assumed Limitations
 
 - This is a portfolio demo, not a certified product.
-- Authentication currently uses demo login with seeded users. Production identity should use OIDC Authorization Code Flow with MFA or passkeys.
+- Authentication uses explicitly enabled seeded demo accounts. It is suitable only for the controlled synthetic sandbox; a real product would use OIDC with MFA or passkeys.
 - Uploads currently use base64 JSON payloads for demo simplicity. Production upload transport should move to multipart or presigned upload URLs with the same validation and scan pipeline.
 - Malware scanning uses a documented mock worker instead of ClamAV.
