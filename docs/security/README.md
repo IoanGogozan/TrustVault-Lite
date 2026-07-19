@@ -19,23 +19,22 @@ TrustVault Lite is designed as a secure SaaS demo with visible and testable cont
 - [ASVS mapping](asvs-mapping.md)
 - [Risk register](risk-register.md)
 - [Security test plan](security-test-plan.md)
-- [Incident response](incident-response.md)
 - [Secure SDLC](secure-sdlc.md)
 
 ## Main Controls
 
-- Development-only demo login for local portfolio flows.
+- Explicitly gated seeded login for local flows and the controlled synthetic production sandbox.
 - Production identity target: OIDC Authorization Code Flow with MFA/passkeys.
 - Production identity is documented but not implemented in the demo.
 - HttpOnly Secure SameSite cookies.
 - Centralized RBAC/ABAC.
-- PostgreSQL RLS.
-- Upload validation and scanning.
-- Private object storage.
+- Tenant-scoped in-memory runtime plus PostgreSQL/RLS repositories verified in database-backed tests.
+- Synthetic PDF validation and authenticated mock scanning.
+- Private in-memory object storage behind an adapter boundary.
 - Proxy downloads for clean files.
 - Hashed API keys with scopes.
 - Rate limiting.
 - Audit events.
 - Security headers.
 - CSRF protection.
-- CI/CD security scans.
+- CI security scans; the ZAP baseline is intentionally non-blocking.

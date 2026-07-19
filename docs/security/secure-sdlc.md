@@ -26,7 +26,7 @@ Security must be part of the development process, not a final check added after 
 - [ ] New config is validated at startup.
 - [ ] Relevant documentation is updated.
 
-## CI/CD Security Pipeline
+## CI and Security Pipeline
 
 Implemented pipeline:
 
@@ -40,9 +40,9 @@ Implemented pipeline:
 8. dependency scan
 9. secret scan
 10. CodeQL SAST
-11. Trivy filesystem and container-style scan
+11. Trivy filesystem dependency/configuration scan with SARIF upload
 12. build
-13. OWASP ZAP baseline
+13. non-blocking OWASP ZAP baseline against ephemeral local services
 14. security report artifact
 
 Workflow files:
@@ -50,6 +50,8 @@ Workflow files:
 - `.github/workflows/ci.yml`
 - `.github/workflows/security.yml`
 - `.github/dependabot.yml`
+
+The repository also contains `.github/workflows/deploy-home-server.yml`. It is manual-only and guarded to `main`, but it is inactive until a dedicated trusted runner is installed. Deployment is not part of the blocking CI pipeline.
 
 ## Release Hardening
 
@@ -59,3 +61,5 @@ Workflow files:
 - Run demo seed and the main scenario.
 - Run cross-tenant tests.
 - Review the risk register.
+- Verify that documentation distinguishes the in-memory runtime from the PostgreSQL/RLS test path.
+- Verify the Cloudflare/Caddy client-IP trust configuration or use DNS-only operation.

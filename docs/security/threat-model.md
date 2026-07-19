@@ -2,13 +2,13 @@
 
 ## Scope
 
-This threat model covers TrustVault Lite as a B2B multi-tenant SaaS for confidential documents.
+This threat model covers the live controlled sandbox and the security controls demonstrated by TrustVault Lite. It does not treat the sandbox as a durable production SaaS or permit real confidential data.
 
 ## Assets
 
 | Asset | Sensitivity | Notes |
 | --- | --- | --- |
-| Uploaded documents | High | Contracts, reports, compliance evidence |
+| Synthetic uploaded documents | Demo-only | Real contracts, reports, personal data, or compliance evidence are prohibited |
 | Document metadata | Medium/High | Titles, classifications, owner, project |
 | Tenant data | High | Members, roles, settings |
 | Audit logs | High | May contain security events and metadata |
@@ -29,13 +29,12 @@ This threat model covers TrustVault Lite as a B2B multi-tenant SaaS for confiden
 
 ## Trust Boundaries
 
-- User browser -> Web app.
-- Web app -> API.
-- API -> Database.
-- API -> Object storage.
-- API -> Rate limiter.
+- User browser -> Cloudflare -> shared Caddy edge.
+- Caddy -> web/API containers on the external Docker proxy network.
+- API -> in-memory domain state, private objects, sessions, rate limiter, and audit events.
+- Migration/tests -> PostgreSQL on the internal Docker data network.
 - API -> In-process scan queue/worker.
-- GitHub Actions -> build/deploy artifacts.
+- GitHub-hosted Actions -> CI/security results. The home-server deployment workflow is inactive without a dedicated trusted runner.
 
 ## STRIDE
 
@@ -43,8 +42,8 @@ This threat model covers TrustVault Lite as a B2B multi-tenant SaaS for confiden
 | --- | --- | --- |
 | Spoofing | Stolen session or compromised API key | HttpOnly cookies, session revoke, API key expiry/revoke; production identity should add MFA/passkeys |
 | Tampering | Unauthorized role/project/document changes | RBAC/ABAC, DTO allowlist, audit log |
-| Repudiation | User denies an action | Audit events with actor, IP hash, user agent, result |
-| Information Disclosure | Cross-tenant document access | tenant-scoped queries, RLS, object-level auth, negative tests |
+| Repudiation | User denies an action | In-memory audit events with actor, IP hash, user agent, and result; no durability claim |
+| Information Disclosure | Cross-tenant document access | tenant-scoped repositories, object-level auth, negative tests, separately verified RLS path |
 | Denial of Service | Large uploads or brute force | file size limits, body limits, rate limiting |
 | Elevation of Privilege | Viewer becomes Admin through mass assignment | field allowlists, centralized authorization, tests |
 
@@ -58,7 +57,7 @@ Mitigations:
 
 - verify active membership in tenant;
 - verify `document.tenantId`;
-- set RLS transaction context;
+- use tenant-scoped repository operations; database-backed tests additionally set RLS transaction context;
 - return `403` or `404` without leaking metadata;
 - log `document.cross_tenant_denied`.
 
@@ -83,8 +82,10 @@ Mitigations:
 - magic bytes;
 - max file size;
 - private storage;
-- scan job;
+- in-process scan job;
 - quarantine until `clean`.
+
+The mock scanner demonstrates state transitions and authorization boundaries only; it is not a malware-detection control suitable for real files.
 
 ### API Key Misuse
 
@@ -102,3 +103,6 @@ Mitigations:
 
 - Production OIDC and MFA/passkeys are documented as the target identity posture, not implemented in the demo.
 - The scan worker uses documented mock scanning instead of ClamAV.
+- Live business state and audit evidence are in memory and reset on API restart.
+- Cloudflare is an additional proxy hop. End-user IP attribution remains an open operational risk until Caddy trusts only Cloudflare ranges and direct-origin access is restricted, or the record is changed to DNS-only.
+- PostgreSQL/RLS repositories are implemented and tested but are not selected by the live `server.ts` bootstrap.

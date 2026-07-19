@@ -14,7 +14,7 @@
 - user without membership receives `403`.
 - user cannot select a foreign tenant.
 - document ID from another tenant returns `403` or `404`.
-- query without tenant context fails.
+- PostgreSQL repository query without tenant context fails in database-backed tests.
 - API key from tenant A cannot access tenant B.
 - viewer cannot upload.
 - auditor cannot create documents.
@@ -36,7 +36,8 @@
 - key without `documents:write` cannot create documents.
 - revoked key does not work.
 - expired key does not work.
-- rate limiting applies by tenant, key, and IP.
+- rate limiting applies to the configured subject for login, API-key administration, external API, share links, and uploads.
+- forwarded client IPs receive separate login buckets when Fastify is behind the single trusted Caddy hop.
 - request body with extra fields cannot modify forbidden properties.
 - full key does not appear in logs.
 
@@ -50,6 +51,7 @@
 - mutating request without CSRF token is blocked.
 - browser-like mutating request without origin is blocked.
 - internal scan endpoints require worker authorization.
+- Caddy returns `404` for public `/api/internal/*` requests.
 - rate limiting does not use raw bearer tokens as limiter keys.
 - errors do not expose stack traces in production.
 
@@ -58,5 +60,5 @@
 - dependency scan.
 - secret scan.
 - SAST.
-- Trivy filesystem and container-style scan.
-- OWASP ZAP baseline.
+- Trivy filesystem dependency/configuration scan.
+- non-blocking OWASP ZAP baseline.

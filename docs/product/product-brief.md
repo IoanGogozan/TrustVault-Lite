@@ -22,17 +22,16 @@ The project should demonstrate technical maturity through the combination of:
 - ASVS mapping;
 - security tests;
 - audit logs;
-- CI/CD security pipeline;
+- CI and security pipeline;
 - clear demo script.
 
-## Core Capabilities
+## Implemented Demo Capabilities
 
-- Create organization.
-- Invite members.
+- Seeded organizations, memberships, and roles. Organization and invitation creation exist for local tests but are disabled in the public sandbox.
 - Tenant switcher.
 - Projects.
-- Secure document upload.
-- File scan status.
+- Synthetic PDF upload through base64 JSON.
+- Authenticated server-side mock scan status.
 - Secure download.
 - Expiring share links.
 - RBAC and ABAC.

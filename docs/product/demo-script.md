@@ -2,6 +2,8 @@
 
 This is the main portfolio or interview demo scenario.
 
+Open `https://vault.norvix.no` for the portfolio overview, then use **Launch interactive demo** or navigate directly to `https://vault.norvix.no/demo`.
+
 ## Flow
 
 1. Log in as Owner in the `Acme Corp` tenant.
@@ -35,5 +37,4 @@ TrustVault Lite is not presented as a certified product. It is an ASVS-inspired 
 ## Supporting Assets
 
 - Demo accounts: `docs/product/demo-accounts.md`
-- Portfolio screenshot and video checklist: `docs/product/portfolio-assets.md`
-- Architecture diagram: `docs/assets/trustvault-security-architecture.svg`
+- Architecture and trust boundaries: `docs/security/architecture.md`
