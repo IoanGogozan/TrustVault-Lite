@@ -72,6 +72,9 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     options.scanQueue ?? new InMemoryScanJobQueue(store, documentRepository, storage);
   const rateLimiter = options.rateLimiter ?? new InMemoryRateLimiter();
   const app = Fastify({
+    // The API is reachable only through the single Caddy hop. Trust exactly
+    // that hop so request.ip reflects Caddy's sanitized X-Forwarded-For value.
+    trustProxy: 1,
     logger:
       config.env === "production"
         ? {

@@ -57,6 +57,8 @@ Detected server architecture:
 
 TrustVault uses the aliases `trustvault-web` and `trustvault-api` on the external `proxy` network. PostgreSQL and the migration job remain only on the internal `data` network. The home-server Compose file publishes no host ports.
 
+Fastify trusts exactly one proxy hop, which is Caddy in this topology. If Cloudflare proxying is enabled, Caddy must also be configured with Cloudflare's published address ranges as trusted proxies (with strict right-to-left parsing), and direct origin access must be restricted. Otherwise rate limiting and audit hashes identify the Cloudflare edge rather than the end user. DNS-only operation avoids this additional proxy hop and is the initial deployment recommendation.
+
 Before the first deploy, create the server secret file manually:
 
 ```sh
