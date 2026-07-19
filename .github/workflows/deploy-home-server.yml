@@ -13,7 +13,6 @@ permissions:
 jobs:
   deploy:
     runs-on: self-hosted
-    environment: home-server
     steps:
       - name: Checkout trusted main revision
         uses: actions/checkout@v4
@@ -66,18 +65,17 @@ jobs:
           docker compose -f /srv/proxy/compose.yml exec -T caddy \
             caddy reload --config /etc/caddy/Caddyfile
 
-      - name: Install privacy retention timer
+      - name: Install privacy retention schedule
         run: |
           set -euo pipefail
-          sudo install -m 0644 \
-            /srv/projects/trustvault/infra/systemd/trustvault-daily-reset.service \
-            /etc/systemd/system/trustvault-daily-reset.service
-          sudo install -m 0644 \
-            /srv/projects/trustvault/infra/systemd/trustvault-daily-reset.timer \
-            /etc/systemd/system/trustvault-daily-reset.timer
-          sudo systemctl daemon-reload
-          sudo systemctl enable --now trustvault-daily-reset.timer
-          systemctl is-active --quiet trustvault-daily-reset.timer
+          retention_crontab="$(mktemp)"
+          trap 'rm -f "$retention_crontab"' EXIT
+          crontab -l 2>/dev/null \
+            | grep -v '# trustvault-daily-reset$' \
+            > "$retention_crontab" || true
+          cat infra/cron/trustvault-daily-reset >> "$retention_crontab"
+          crontab "$retention_crontab"
+          crontab -l | grep -F '# trustvault-daily-reset'
 
       - name: Verify internal health
         working-directory: /srv/projects/trustvault

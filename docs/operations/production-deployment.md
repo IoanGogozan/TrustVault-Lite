@@ -71,7 +71,7 @@ nano /srv/projects/trustvault/.env
 
 Also create a Cloudflare `A` record for `vault.norvix.no` pointing to the current public IP, initially set to **DNS only**. Do not add `AAAA` unless IPv6 routing and firewall rules are verified.
 
-The workflow `.github/workflows/deploy-home-server.yml` is manual-only. It refuses non-`main` refs, preserves the server `.env`, validates the external `proxy` network, deploys the application, installs the Caddy site fragment, validates the full Caddy configuration, reloads Caddy, and checks API health from the proxy network. It is currently inactive because a dedicated trusted TrustVault runner has intentionally not been installed for this public repository. The initial deployment and current updates use key-only SSH from the trusted LAN.
+The workflow `.github/workflows/deploy-home-server.yml` is manual-only. It refuses non-`main` refs, preserves the server `.env`, validates the external `proxy` network, deploys the application, installs the Caddy site fragment and unprivileged retention cron entry, validates the full Caddy configuration, reloads Caddy, and checks API health from the proxy network. It is currently inactive because a dedicated trusted TrustVault runner has intentionally not been installed for this public repository. The initial deployment and current updates use key-only SSH from the trusted LAN.
 
 Install the tracked retention units during the first deployment and whenever they change:
 
