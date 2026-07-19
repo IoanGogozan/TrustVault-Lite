@@ -24,8 +24,9 @@ export default function PrivacyPage() {
         <section>
           <h2>1. Who operates this website</h2>
           <p>
-            TrustVault Lite is operated by Ioan Gogozan, Norway. The operator is the data controller
-            for the personal data described in this notice.
+            TrustVault Lite is operated by Norvix AS, Norway. Norvix AS is the data controller for
+            the personal data described in this notice. The company website is{" "}
+            <a href="https://norvix.no">norvix.no</a>.
           </p>
           <p>Privacy contact: <a href="mailto:privacy@norvix.no">privacy@norvix.no</a></p>
         </section>

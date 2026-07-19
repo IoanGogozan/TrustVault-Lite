@@ -1,6 +1,6 @@
 # Processing Record
 
-Controller: Ioan Gogozan, Norway
+Controller: Norvix AS, Norway (`norvix.no`)
 Privacy contact: `privacy@norvix.no`
 Scope: TrustVault Lite public portfolio site and synthetic security sandbox
 
