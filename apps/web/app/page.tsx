@@ -230,7 +230,7 @@ export default function LandingPage() {
 
       <footer className="landing-footer">
         <div className="landing-brand"><ShieldCheck /><span>TrustVault Lite</span></div>
-        <p>ASVS-inspired backend security demonstration by Ioan Gogozan.</p>
+        <p>ASVS-inspired backend security demonstration by Norvix AS.</p>
         <div className="landing-footer-links">
           <Link href="/privacy">Privacy</Link>
           <a href="https://github.com/IoanGogozan/TrustVault-Lite" rel="noreferrer" target="_blank">
