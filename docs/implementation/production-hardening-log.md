@@ -46,3 +46,10 @@ The operational checklist is tracked in `docs/operations/production-deployment.m
 - added a Caddy site fragment for `vault.norvix.no`;
 - added a manual-only, `main`-guarded self-hosted deployment workflow;
 - preserved server-managed secrets outside GitHub and added deployment preflight checks.
+
+## 2026-07-19 — proxy-aware client identity
+
+- configured Fastify to trust exactly the single Caddy hop in front of the API;
+- ensured rate limits and audit IP hashes use the forwarded client identity instead of the Caddy container address;
+- added a regression test proving different forwarded client IPs receive separate login rate-limit buckets;
+- documented that a CDN in front of Caddy requires its own trusted-proxy policy or DNS-only operation before the forwarded address can be treated as the end-user IP.

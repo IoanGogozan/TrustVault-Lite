@@ -233,6 +233,37 @@ describe("phase 1 auth and tenant foundation", () => {
     expect(limited.json()).toEqual({ error: "rate_limit_exceeded" });
   });
 
+  it("keeps login rate-limit buckets separate by forwarded client IP", async () => {
+    const app = buildApp({ store: createDemoStore() });
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      const response = await app.inject({
+        method: "POST",
+        url: "/auth/dev-login",
+        headers: { "x-forwarded-for": "203.0.113.10" },
+        payload: { email: "missing-user@acme.test" }
+      });
+
+      expect(response.statusCode).toBe(401);
+    }
+
+    const differentClient = await app.inject({
+      method: "POST",
+      url: "/auth/dev-login",
+      headers: { "x-forwarded-for": "203.0.113.11" },
+      payload: { email: "missing-user@acme.test" }
+    });
+    const limitedClient = await app.inject({
+      method: "POST",
+      url: "/auth/dev-login",
+      headers: { "x-forwarded-for": "203.0.113.10" },
+      payload: { email: "missing-user@acme.test" }
+    });
+
+    expect(differentClient.statusCode).toBe(401);
+    expect(limitedClient.statusCode).toBe(429);
+  });
+
   it("lists only active tenant memberships for the current user", async () => {
     const store = createDemoStore();
     const app = buildApp({ store });
