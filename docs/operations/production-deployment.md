@@ -85,6 +85,12 @@ systemctl list-timers trustvault-daily-reset.timer
 
 The timer force-recreates only the API at 03:20 Europe/Oslo each day. This deletes in-memory sandbox state and the replaced API container's log no later than 24 hours after creation. The Caddy site log rotates at least daily and deletes rotated logs after no more than 168 hours.
 
+If the SSH deployment account cannot install system units, install the equivalent
+unprivileged cron entry from `infra/cron/trustvault-daily-reset` in that account's
+crontab. The Norvix server currently uses this fallback because the deployment
+account intentionally has no passwordless `sudo`; the host timezone is
+`Europe/Oslo`, so it runs at 03:20 local time. Do not enable both schedulers.
+
 ## Secret preparation
 
 Copy `infra/docker/.env.production.example` to `infra/docker/.env.production` on the server. The destination is ignored by Git. Generate independent values; never reuse passwords.
