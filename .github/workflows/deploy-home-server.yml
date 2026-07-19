@@ -1,0 +1,79 @@
+name: Deploy Home Server Sandbox
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-trustvault-home-server
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+    environment: home-server
+    steps:
+      - name: Checkout trusted main revision
+        uses: actions/checkout@v4
+
+      - name: Verify server prerequisites
+        run: |
+          set -euo pipefail
+          test "${GITHUB_REF}" = "refs/heads/main"
+          docker network inspect proxy >/dev/null
+          test -f /srv/projects/trustvault/.env
+          test -d /srv/proxy/sites
+
+      - name: Sync application files
+        run: |
+          set -euo pipefail
+          mkdir -p /srv/projects/trustvault
+          rsync -az --delete \
+            --exclude '.git/' \
+            --exclude '.github/' \
+            --exclude '.env' \
+            "$GITHUB_WORKSPACE/" /srv/projects/trustvault/
+
+      - name: Validate and deploy application
+        working-directory: /srv/projects/trustvault
+        run: |
+          set -euo pipefail
+          docker compose \
+            --env-file .env \
+            -f infra/docker/docker-compose.home-server.yml \
+            config --quiet
+          docker compose \
+            --env-file .env \
+            -f infra/docker/docker-compose.home-server.yml \
+            up -d --build --remove-orphans
+          docker compose \
+            --env-file .env \
+            -f infra/docker/docker-compose.home-server.yml \
+            ps
+
+      - name: Install and validate Caddy route
+        run: |
+          set -euo pipefail
+          install -m 0644 \
+            /srv/projects/trustvault/infra/caddy/vault.norvix.no.caddy \
+            /srv/proxy/sites/vault.norvix.no.caddy
+          docker compose -f /srv/proxy/compose.yml exec -T caddy \
+            caddy validate --config /etc/caddy/Caddyfile
+          docker compose -f /srv/proxy/compose.yml exec -T caddy \
+            caddy reload --config /etc/caddy/Caddyfile
+
+      - name: Verify internal health
+        working-directory: /srv/projects/trustvault
+        run: |
+          set -euo pipefail
+          docker compose \
+            --env-file .env \
+            -f infra/docker/docker-compose.home-server.yml \
+            ps --status running
+          docker compose \
+            --env-file .env \
+            -f infra/docker/docker-compose.home-server.yml \
+            exec -T web node -e \
+            "fetch('http://trustvault-api:4000/health').then((response) => { if (!response.ok) process.exit(1) }).catch(() => process.exit(1))"

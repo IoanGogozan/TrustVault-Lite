@@ -142,6 +142,8 @@ The controlled public sandbox target is `https://vault.norvix.no`, fronted by Ca
 
 The public sandbox accepts synthetic data only, runs as a single instance, resets its in-memory state on restart, and disables organization and invitation creation.
 
+The Norvix home server uses its existing shared Caddy proxy and `infra/docker/docker-compose.home-server.yml`; it must not start the standalone Caddy service because the shared proxy already owns ports 80/443.
+
 ## Demo Accounts
 
 | Email | Tenant | Role |

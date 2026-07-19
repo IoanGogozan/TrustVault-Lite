@@ -10,7 +10,9 @@ This deployment is a controlled, ephemeral portfolio sandbox, not a production S
 
 Internet traffic reaches only Caddy on TCP 80/443 and UDP 443. Caddy obtains and renews the TLS certificate, routes `/api/*` to Fastify, and routes all other requests to Next.js. Web and API share one browser origin, reducing CORS and cookie complexity. PostgreSQL is attached only to an internal Docker network and has no host port.
 
-The production stack is defined in `infra/docker/docker-compose.production.yml`:
+The standalone production stack is defined in `infra/docker/docker-compose.production.yml`. The actual Norvix home server already runs a shared Caddy edge, so it uses `infra/docker/docker-compose.home-server.yml` and the site fragment `infra/caddy/vault.norvix.no.caddy` instead. Never start the standalone Caddy stack on that server because ports 80/443 are already owned by the shared proxy.
+
+The standalone stack contains:
 
 - `caddy`: TLS termination, security headers, compression, access logs, and reverse proxy;
 - `web`: standalone Next.js server running as the unprivileged `node` user;
@@ -41,6 +43,32 @@ OIDC, Redis, S3, ClamAV, multipart uploads, multi-instance scaling, and durable 
 - Time synchronization enabled; TLS and session controls depend on correct time.
 
 Do not publish an `AAAA` record if the server cannot accept IPv6 traffic. Do not expose PostgreSQL, the API port, the web port, Docker daemon, or Caddy admin API.
+
+## Norvix home-server integration
+
+Detected server architecture:
+
+- Ubuntu 24.04 LTS at LAN address `192.168.50.23`;
+- shared Caddy container is the only public listener on 80/443;
+- external Docker network `proxy` connects Caddy to applications;
+- application folders live below `/srv/projects`;
+- a self-hosted GitHub Actions runner is installed;
+- SSH is key-only and restricted to the LAN.
+
+TrustVault uses the aliases `trustvault-web` and `trustvault-api` on the external `proxy` network. PostgreSQL and the migration job remain only on the internal `data` network. The home-server Compose file publishes no host ports.
+
+Before the first deploy, create the server secret file manually:
+
+```sh
+mkdir -p /srv/projects/trustvault
+cp infra/docker/.env.production.example /srv/projects/trustvault/.env
+chmod 600 /srv/projects/trustvault/.env
+nano /srv/projects/trustvault/.env
+```
+
+Also create a Cloudflare `A` record for `vault.norvix.no` pointing to the current public IP, initially set to **DNS only**. Do not add `AAAA` unless IPv6 routing and firewall rules are verified.
+
+The workflow `.github/workflows/deploy-home-server.yml` is manual-only. It refuses non-`main` refs, preserves the server `.env`, validates the external `proxy` network, deploys the application, installs the Caddy site fragment, validates the full Caddy configuration, reloads Caddy, and checks API health from the proxy network.
 
 ## Secret preparation
 
@@ -85,7 +113,7 @@ docker compose \
   build --pull
 ```
 
-Once the sandbox release gate is cleared, start with:
+For a standalone host, once the sandbox release gate is cleared, start with:
 
 ```sh
 docker compose \
@@ -95,6 +123,8 @@ docker compose \
 ```
 
 Then verify container health, migration completion, HTTPS redirect, certificate chain, security headers, demo login, denied role actions, synthetic upload/download scanning, API-key/share-link revocation, and audit creation.
+
+On the Norvix home server, use the manual **Deploy Home Server Sandbox** GitHub Actions workflow after merging to `main`; do not run the standalone Compose command above.
 
 ## Reset and recovery
 

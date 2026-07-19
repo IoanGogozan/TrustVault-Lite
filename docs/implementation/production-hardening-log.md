@@ -37,3 +37,12 @@ The operational checklist is tracked in `docs/operations/production-deployment.m
 - added synthetic-data/reset warnings and a guided security-control walkthrough;
 - documented single-instance, in-memory operation as an intentional sandbox boundary;
 - added tests for production demo gating, locked sandbox mutations, and token-free scanning.
+
+## 2026-07-19 — Norvix server integration
+
+- aligned TrustVault with the existing shared Caddy container and external `proxy` network;
+- added a home-server Compose file with no public host ports;
+- added stable `trustvault-web` and `trustvault-api` network aliases;
+- added a Caddy site fragment for `vault.norvix.no`;
+- added a manual-only, `main`-guarded self-hosted deployment workflow;
+- preserved server-managed secrets outside GitHub and added deployment preflight checks.
