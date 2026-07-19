@@ -197,8 +197,16 @@ export default function Home() {
       return;
     }
 
+    clearTransientUiState();
     void refreshWorkspace(selectedMembership.tenantId);
   }, [selectedMembership?.tenantId]);
+
+  function clearTransientUiState() {
+    setFeedback({});
+    setDownloadMetadata(undefined);
+    setLastShareToken(undefined);
+    setLastApiKey(undefined);
+  }
 
   async function refreshCurrentUser() {
     const response = await fetch(`${apiBaseUrl}/me`, {
@@ -264,7 +272,7 @@ export default function Home() {
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    report("login", undefined);
+    clearTransientUiState();
 
     const response = await fetch(`${apiBaseUrl}/auth/dev-login`, {
       method: "POST",
@@ -289,6 +297,8 @@ export default function Home() {
     });
     setCurrentUser(undefined);
     setSelectedTenantId(undefined);
+    setSelectedProjectId(undefined);
+    clearTransientUiState();
   }
 
   async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
