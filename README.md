@@ -4,7 +4,7 @@ TrustVault Lite is a B2B multi-tenant SaaS portfolio demo built as a secure clie
 
 The goal is to demonstrate real security controls in a small product. This project does not claim certification or formal compliance.
 
-Public sandbox: [https://vault.norvix.no](https://vault.norvix.no). Use synthetic data only; application state is intentionally ephemeral and resets when the API restarts.
+Portfolio landing page: [https://vault.norvix.no](https://vault.norvix.no). The interactive sandbox is available at [`/demo`](https://vault.norvix.no/demo). Use synthetic data only; application state is intentionally ephemeral and resets when the API restarts.
 
 ## Positioning
 

@@ -2,6 +2,8 @@
 
 This is the main portfolio or interview demo scenario.
 
+Open `https://vault.norvix.no` for the portfolio overview, then use **Launch interactive demo** or navigate directly to `https://vault.norvix.no/demo`.
+
 ## Flow
 
 1. Log in as Owner in the `Acme Corp` tenant.

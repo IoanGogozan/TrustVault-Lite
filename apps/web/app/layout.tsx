@@ -2,8 +2,9 @@ import type { Metadata } from "next";
 import "./styles.css";
 
 export const metadata: Metadata = {
-  title: "TrustVault Lite",
-  description: "Secure client evidence portal demo"
+  title: "TrustVault Lite — Backend Security Demo",
+  description:
+    "Interactive portfolio demonstration of tenant isolation, RBAC/ABAC, secure sessions, private file delivery, hashed credentials, and audit logging."
 };
 
 export default function RootLayout({
@@ -17,4 +18,3 @@ export default function RootLayout({
     </html>
   );
 }
-
