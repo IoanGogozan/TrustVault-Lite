@@ -112,7 +112,7 @@ export default function LandingPage() {
           <div className="landing-trust-line" aria-label="Demo boundaries">
             <span><Check />No registration</span>
             <span><Check />Seeded identities</span>
-            <span><RefreshCcw />State resets on restart</span>
+            <span><RefreshCcw />State resets daily</span>
           </div>
         </div>
 
@@ -127,7 +127,7 @@ export default function LandingPage() {
           <div className="architecture-flow">
             <div className="architecture-node node-client"><Braces /><span>Browser</span><small>same-origin client</small></div>
             <ArrowRight className="flow-arrow" />
-            <div className="architecture-node"><ShieldCheck /><span>Cloudflare + Caddy</span><small>TLS · headers · routing</small></div>
+            <div className="architecture-node"><ShieldCheck /><span>Caddy reverse proxy</span><small>TLS · headers · routing</small></div>
             <ArrowRight className="flow-arrow" />
             <div className="architecture-node node-api"><TerminalSquare /><span>Fastify API</span><small>authn · authz · audit</small></div>
           </div>
@@ -231,9 +231,12 @@ export default function LandingPage() {
       <footer className="landing-footer">
         <div className="landing-brand"><ShieldCheck /><span>TrustVault Lite</span></div>
         <p>ASVS-inspired backend security demonstration by Ioan Gogozan.</p>
-        <a href="https://github.com/IoanGogozan/TrustVault-Lite" rel="noreferrer" target="_blank">
-          View source <ArrowRight />
-        </a>
+        <div className="landing-footer-links">
+          <Link href="/privacy">Privacy</Link>
+          <a href="https://github.com/IoanGogozan/TrustVault-Lite" rel="noreferrer" target="_blank">
+            View source <ArrowRight />
+          </a>
+        </div>
       </footer>
     </main>
   );

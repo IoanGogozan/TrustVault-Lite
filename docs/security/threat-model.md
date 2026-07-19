@@ -29,7 +29,7 @@ This threat model covers the live controlled sandbox and the security controls d
 
 ## Trust Boundaries
 
-- User browser -> Cloudflare -> shared Caddy edge.
+- User browser -> shared Caddy edge. Cloudflare provides DNS only.
 - Caddy -> web/API containers on the external Docker proxy network.
 - API -> in-memory domain state, private objects, sessions, rate limiter, and audit events.
 - Migration/tests -> PostgreSQL on the internal Docker data network.
@@ -104,5 +104,5 @@ Mitigations:
 - Production OIDC and MFA/passkeys are documented as the target identity posture, not implemented in the demo.
 - The scan worker uses documented mock scanning instead of ClamAV.
 - Live business state and audit evidence are in memory and reset on API restart.
-- Cloudflare is an additional proxy hop. End-user IP attribution remains an open operational risk until Caddy trusts only Cloudflare ranges and direct-origin access is restricted, or the record is changed to DNS-only.
+- DNS-only operation removes Cloudflare from the HTTP proxy chain; Caddy is the single trusted hop used for client-IP attribution.
 - PostgreSQL/RLS repositories are implemented and tested but are not selected by the live `server.ts` bootstrap.

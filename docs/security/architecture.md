@@ -2,7 +2,7 @@
 
 ## Runtime scope
 
-TrustVault Lite is a controlled, synthetic portfolio sandbox. The live request path is Cloudflare, the shared Caddy edge, Next.js or Fastify, and one API instance. The API process uses in-memory adapters for sessions, rate limits, projects, documents, object content, scan jobs, share links, API keys, and audit events. Restarting the API resets that state.
+TrustVault Lite is a controlled, synthetic portfolio sandbox. Cloudflare provides authoritative DNS only. The live HTTP request path is the client, the shared Caddy edge, Next.js or Fastify, and one API instance. The API process uses in-memory adapters for sessions, rate limits, projects, documents, object content, scan jobs, share links, API keys, and audit events. A scheduled daily API recreation resets that state within 24 hours.
 
 PostgreSQL runs on the home-server stack so migrations and the least-privileged application role are validated. PostgreSQL repositories and RLS policies are implemented and exercised by database-backed tests, but `server.ts` currently starts `buildApp()` with its default in-memory repositories. PostgreSQL must therefore not be described as the live sandbox's durable business-data store.
 
@@ -10,8 +10,7 @@ PostgreSQL runs on the home-server stack so migrations and the least-privileged 
 
 ```mermaid
 flowchart LR
-  Browser --> Cloudflare[Cloudflare proxy]
-  Cloudflare --> Caddy[Shared Caddy edge]
+  Browser --> Caddy[Shared Caddy edge]
   Caddy --> Web[Next.js web]
   Caddy --> API[Fastify API]
   API --> Auth[Seeded sessions + CSRF]
@@ -25,7 +24,7 @@ flowchart LR
 
 Only Caddy publishes host ports 80/443. Web and API expose ports only to Docker networks; PostgreSQL is attached only to the internal data network. Caddy blocks public `/api/internal/*` routes and sends `/api/*` to Fastify after stripping the `/api` prefix.
 
-Fastify trusts exactly one proxy hop: Caddy. Because Cloudflare currently precedes Caddy, reliable end-user IP attribution additionally requires Caddy to trust only Cloudflare's published ranges with strict parsing and requires direct-origin access to be restricted. DNS-only operation removes that extra trust boundary.
+Fastify trusts exactly one proxy hop: Caddy. Because the DNS record is DNS-only, Caddy receives the direct client connection and forwards the client address to Fastify without an additional CDN proxy trust boundary.
 
 ## Authentication and session flow
 

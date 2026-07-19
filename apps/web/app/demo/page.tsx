@@ -128,6 +128,14 @@ type DownloadMetadata = {
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 const demoMode = process.env.NEXT_PUBLIC_DEMO_MODE !== "false";
+const demoAccounts = [
+  { email: "owner@acme.test", label: "Acme Owner — full demo access" },
+  { email: "admin@acme.test", label: "Acme Admin — project administration" },
+  { email: "member@acme.test", label: "Acme Member — document contributor" },
+  { email: "viewer@acme.test", label: "Acme Viewer — read-only boundary" },
+  { email: "auditor@acme.test", label: "Acme Auditor — security visibility" },
+  { email: "owner@globex.test", label: "Globex Owner — separate tenant" }
+] as const;
 
 export default function Home() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | undefined>();
@@ -530,19 +538,26 @@ export default function Home() {
             </div>
           ) : null}
           <label className="field">
-            <span>Email</span>
-            <input
+            <span>Seeded demo identity</span>
+            <select
               value={loginEmail}
               onChange={(event) => setLoginEmail(event.target.value)}
-              type="email"
-              autoComplete="email"
-            />
+            >
+              {demoAccounts.map((account) => (
+                <option key={account.email} value={account.email}>{account.label}</option>
+              ))}
+            </select>
           </label>
           {statusMessage ? <p className="status-message">{statusMessage}</p> : null}
           <button className="primary-action" type="submit">
             <KeyRound aria-hidden="true" />
             Demo login
           </button>
+          <p className="login-privacy-note">
+            This demo uses strictly necessary session and security cookies. Network information and
+            demo actions may be processed for security, abuse prevention, and audit purposes. Use
+            synthetic data only. <Link href="/privacy">Read the Privacy Notice.</Link>
+          </p>
           <Link className="back-to-landing" href="/">
             ← About this security demo
           </Link>

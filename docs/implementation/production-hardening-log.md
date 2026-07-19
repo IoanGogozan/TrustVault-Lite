@@ -61,3 +61,13 @@ The operational checklist is tracked in `docs/operations/production-deployment.m
 - qualified mock scanning, non-blocking ZAP, non-durable audit data, and rollback behavior;
 - removed the stale definition-of-done checklist, uncreated portfolio-asset checklist, generic incident-response placeholder, and misleading mixed current/future SVG architecture diagram;
 - consolidated the maintained runtime architecture into `docs/security/architecture.md`.
+
+## 2026-07-19 — privacy by design
+
+- published a plain-language privacy notice and linked it from the landing page and demo login;
+- replaced the editable login email with a fixed seeded-identity selector to prevent unnecessary personal-data entry;
+- documented the Article 6(1)(f) processing record and legitimate-interest assessment;
+- confirmed Cloudflare is authoritative DNS only and removed it from the live HTTP component path;
+- added a daily systemd API recreation so in-memory sandbox activity is retained for no more than 24 hours;
+- configured daily Caddy access-log rotation with a maximum retention of 168 hours;
+- retained only strictly necessary first-party session and CSRF cookies with an eight-hour maximum lifetime.

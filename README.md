@@ -43,6 +43,8 @@ TrustVault Lite is inspired by:
 - [Risk register](docs/security/risk-register.md)
 - [Security test plan](docs/security/security-test-plan.md)
 - [Secure SDLC](docs/security/secure-sdlc.md)
+- [Privacy processing record](docs/privacy/processing-record.md)
+- [Legitimate interest assessment](docs/privacy/legitimate-interest-assessment.md)
 
 ## Architecture
 
@@ -136,11 +138,11 @@ The ZAP scan expects the web app to be available at `http://localhost:3000` on t
 
 ## Production Deployment
 
-The controlled public sandbox is live at `https://vault.norvix.no`. Public traffic currently passes through Cloudflare to the shared Caddy origin on TCP 80/443 and UDP 443. `DEMO_MODE=true` explicitly enables seeded-account login independently of `NODE_ENV=production`; without it, the demo login returns `404`. The deployment checklist is documented in [the production deployment runbook](docs/operations/production-deployment.md).
+The controlled public sandbox is live at `https://vault.norvix.no`. Cloudflare provides authoritative DNS only; public HTTP traffic connects directly to the shared Caddy origin on TCP 80/443 and UDP 443. `DEMO_MODE=true` explicitly enables seeded-account login independently of `NODE_ENV=production`; without it, the demo login returns `404`. The deployment checklist is documented in [the production deployment runbook](docs/operations/production-deployment.md).
 
 The public sandbox accepts synthetic data only, runs as a single instance, resets its in-memory state on restart, and disables organization and invitation creation.
 
-The Norvix home server uses its existing shared Caddy proxy and `infra/docker/docker-compose.home-server.yml`; it must not start the standalone Caddy service because the shared proxy already owns ports 80/443. The API trusts exactly the single Caddy hop. Correct end-user IP attribution while Cloudflare proxying is enabled additionally requires a trusted-Cloudflare policy at Caddy and restricted direct-origin access; DNS-only operation is the simpler documented baseline.
+The Norvix home server uses its existing shared Caddy proxy and `infra/docker/docker-compose.home-server.yml`; it must not start the standalone Caddy service because the shared proxy already owns ports 80/443. The API trusts exactly the single Caddy hop. A daily systemd timer resets ephemeral API state, and the site-specific Caddy access log is rotated daily with a maximum seven-day retention.
 
 The initial live deployment was performed through key-only SSH from the trusted LAN. The repository includes a manual-only, `main`-guarded self-hosted workflow, but it remains inactive until a dedicated trusted TrustVault runner is installed. The existing `norvix` runner is not shared with this public repository.
 

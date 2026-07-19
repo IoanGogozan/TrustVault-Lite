@@ -116,4 +116,4 @@ External API:
 - Malware scanning uses a documented mock worker instead of ClamAV.
 - Redis and S3-compatible adapters are present as boundaries, but local demo defaults remain in-memory.
 - PostgreSQL repositories and RLS policies are implemented and tested, but the live `server.ts` bootstrap uses the in-memory repository defaults.
-- Fastify trusts the single Caddy hop; Cloudflare client-IP attribution remains an operational boundary documented in the risk register and deployment runbook.
+- Fastify trusts the single Caddy hop; Cloudflare is authoritative DNS only and does not proxy HTTP traffic.
