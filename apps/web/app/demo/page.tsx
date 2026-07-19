@@ -172,6 +172,8 @@ export default function Home() {
   const canCreateDocument = role === "owner" || role === "admin" || role === "member";
   const canCreateApiKey = role === "owner";
   const canRevokeApiKey = role === "owner";
+  const canViewSecurity = role === "owner" || role === "admin" || role === "auditor";
+  const canViewAudit = canViewSecurity;
 
   function report(area: FeedbackArea, message?: string) {
     setFeedback((current) => ({ ...current, [area]: message }));
@@ -726,7 +728,7 @@ export default function Home() {
         </section>
 
         <section className="summary-grid" aria-label="Security summary">
-          {buildSecuritySignals(securityDashboard).map((signal) => {
+          {buildSecuritySignals(securityDashboard, canViewSecurity).map((signal) => {
             const Icon = signal.icon;
 
             return (
@@ -979,13 +981,14 @@ export default function Home() {
               <h2>Security dashboard</h2>
               <ShieldCheck aria-hidden="true" />
             </div>
-            <dl className="details compact">
+            {!canViewSecurity ? <p className="role-guidance">Security metrics require Owner, Admin, or Auditor role.</p> : null}
+            {canViewSecurity ? <dl className="details compact">
               <div>
                 <dt>MFA coverage</dt>
                 <dd>
                   {securityDashboard
                     ? `${securityDashboard.metrics.mfaRequiredMembers}/${securityDashboard.metrics.activeMembers}`
-                    : "0/0"}
+                    : "Loading"}
                 </dd>
               </div>
               <div>
@@ -996,7 +999,7 @@ export default function Home() {
                     : "No data"}
                 </dd>
               </div>
-            </dl>
+            </dl> : null}
             <div className="record-list">
               {securityDashboard?.alerts.map((alert) => (
                 <div className="record-row passive alert-row" key={alert.id}>
@@ -1017,7 +1020,8 @@ export default function Home() {
               <h2>Audit events</h2>
               <Activity aria-hidden="true" />
             </div>
-            <div className="audit-list">
+            {!canViewAudit ? <p className="role-guidance">Audit events require Owner, Admin, or Auditor role.</p> : null}
+            {canViewAudit ? <div className="audit-list">
               {auditEvents.map((event) => (
                 <div className="audit-row" key={event.id}>
                   <span className={`result-dot ${event.result}`} />
@@ -1028,7 +1032,7 @@ export default function Home() {
                   <time>{new Date(event.createdAt).toLocaleTimeString()}</time>
                 </div>
               ))}
-            </div>
+            </div> : null}
           </article>
 
           <article className="panel">
@@ -1036,7 +1040,8 @@ export default function Home() {
               <h2>Risky events</h2>
               <AlertTriangle aria-hidden="true" />
             </div>
-            <div className="audit-list">
+            {!canViewSecurity ? <p className="role-guidance">Risky events require Owner, Admin, or Auditor role.</p> : null}
+            {canViewSecurity ? <div className="audit-list">
               {securityDashboard?.riskyEvents.map((event) => (
                 <div className="audit-row" key={event.id}>
                   <span className={`result-dot ${event.result}`} />
@@ -1049,7 +1054,7 @@ export default function Home() {
                   <time>{new Date(event.createdAt).toLocaleTimeString()}</time>
                 </div>
               ))}
-            </div>
+            </div> : null}
           </article>
 
         </section>
@@ -1138,28 +1143,30 @@ function csrfHeaders(): Record<string, string> {
   return csrfToken ? { "X-CSRF-Token": csrfToken } : {};
 }
 
-function buildSecuritySignals(securityDashboard: SecurityDashboard | undefined) {
+function buildSecuritySignals(securityDashboard: SecurityDashboard | undefined, canViewSecurity: boolean) {
   return [
     {
       label: "MFA",
-      value: securityDashboard
+      value: !canViewSecurity
+        ? "Restricted"
+        : securityDashboard
         ? `${securityDashboard.metrics.mfaRequiredMembers}/${securityDashboard.metrics.activeMembers}`
-        : "0/0",
+        : "Loading",
       icon: LockKeyhole
     },
     {
       label: "Denied",
-      value: String(securityDashboard?.metrics.accessDeniedEvents ?? 0),
+      value: canViewSecurity ? String(securityDashboard?.metrics.accessDeniedEvents ?? 0) : "Restricted",
       icon: AlertTriangle
     },
     {
       label: "API keys",
-      value: String(securityDashboard?.metrics.activeApiKeys ?? 0),
+      value: canViewSecurity ? String(securityDashboard?.metrics.activeApiKeys ?? 0) : "Restricted",
       icon: Key
     },
     {
       label: "Share links",
-      value: String(securityDashboard?.metrics.activeShareLinks ?? 0),
+      value: canViewSecurity ? String(securityDashboard?.metrics.activeShareLinks ?? 0) : "Restricted",
       icon: Link2
     }
   ];

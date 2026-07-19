@@ -340,7 +340,7 @@ export function createDemoStore(): AppStore {
         storageKey: "tenant_acme/documents/security-policy.pdf",
         originalFilename: "security-policy.pdf",
         mimeType: "application/pdf",
-        sizeBytes: 5,
+        sizeBytes: 30,
         sha256: "seeded",
         scanStatus: "clean",
         uploadedBy: "user_owner_acme",
@@ -353,17 +353,34 @@ export function createDemoStore(): AppStore {
         storageKey: "tenant_acme/documents/restricted-board-report.pdf",
         originalFilename: "restricted-board-report.pdf",
         mimeType: "application/pdf",
-        sizeBytes: 5,
+        sizeBytes: 27,
         sha256: "seeded",
         scanStatus: "clean",
         uploadedBy: "user_owner_acme",
+        createdAt: now
+      },
+      {
+        id: "version_globex_contract_1",
+        tenantId: "tenant_globex",
+        documentId: "document_globex_contract",
+        storageKey: "tenant_globex/documents/contract.pdf",
+        originalFilename: "contract.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 30,
+        sha256: "seeded",
+        scanStatus: "clean",
+        uploadedBy: "user_owner_globex",
         createdAt: now
       }
     ],
     scanJobs: [],
     shareLinks: [],
     apiKeys: [],
-    storageObjects: {},
+    storageObjects: {
+      "tenant_acme/documents/security-policy.pdf": Buffer.from("%PDF-synthetic-security-policy").toString("base64"),
+      "tenant_acme/documents/restricted-board-report.pdf": Buffer.from("%PDF-synthetic-board-report").toString("base64"),
+      "tenant_globex/documents/contract.pdf": Buffer.from("%PDF-synthetic-globex-contract").toString("base64")
+    },
     invitations: [],
     auditEvents: [],
     sessions: []

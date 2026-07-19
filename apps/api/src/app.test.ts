@@ -1177,6 +1177,28 @@ describe("phase 1 auth and tenant foundation", () => {
     expect(response.json()).toEqual({ error: "invalid_request_body" });
   });
 
+  it("delivers seeded synthetic files for both demo tenants", async () => {
+    const app = buildApp({ store: createDemoStore() });
+    const memberCookie = await login(app, "member@acme.test");
+    const globexOwnerCookie = await login(app, "owner@globex.test");
+
+    const acmeDownload = await app.inject({
+      method: "GET",
+      url: "/documents/document_acme_policy/download/content",
+      headers: { cookie: memberCookie, "x-tenant-id": "tenant_acme" }
+    });
+    const globexDownload = await app.inject({
+      method: "GET",
+      url: "/documents/document_globex_contract/download/content",
+      headers: { cookie: globexOwnerCookie, "x-tenant-id": "tenant_globex" }
+    });
+
+    expect(acmeDownload.statusCode).toBe(200);
+    expect(acmeDownload.body).toContain("%PDF-synthetic-security-policy");
+    expect(globexDownload.statusCode).toBe(200);
+    expect(globexDownload.body).toContain("%PDF-synthetic-globex-contract");
+  });
+
   it("stores uploaded versions as pending scan and blocks download until clean", async () => {
     const store = createDemoStore();
     const app = buildApp({ store });
