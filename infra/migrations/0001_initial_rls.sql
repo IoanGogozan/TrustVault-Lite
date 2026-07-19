@@ -1,13 +1,19 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
-DO $$
-BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'trustvault_app') THEN
-    CREATE ROLE trustvault_app LOGIN PASSWORD 'trustvault_app_dev_password' NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT;
-  END IF;
+\if :{?app_database_password}
+\else
+  \set app_database_password trustvault_app_dev_password
+\endif
 
-  ALTER ROLE trustvault_app WITH PASSWORD 'trustvault_app_dev_password';
-END $$;
+SELECT format(
+  'CREATE ROLE trustvault_app LOGIN PASSWORD %L NOSUPERUSER NOCREATEDB NOCREATEROLE NOINHERIT',
+  :'app_database_password'
+)
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'trustvault_app')
+\gexec
+
+SELECT format('ALTER ROLE trustvault_app WITH PASSWORD %L', :'app_database_password')
+\gexec
 
 DO $$
 BEGIN

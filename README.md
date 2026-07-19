@@ -136,6 +136,12 @@ This runs linting, unit/integration tests, type checks, and database-backed test
 
 The ZAP scan expects the web app to be available at `http://localhost:3000` on the host machine.
 
+## Production Deployment
+
+The hardened home-server target is `https://vault.norvix.no`, fronted by Caddy on TCP 80/443 and UDP 443. The production container foundation and its current readiness gates are documented in [the production deployment runbook](docs/operations/production-deployment.md).
+
+Do not expose the current build publicly until every item marked **release blocker** in that runbook is complete. Production mode intentionally disables the development login.
+
 ## Demo Accounts
 
 | Email | Tenant | Role |

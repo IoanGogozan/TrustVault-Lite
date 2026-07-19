@@ -1,0 +1,29 @@
+FROM node:24.4.1-alpine3.22 AS build
+ENV PNPM_HOME=/pnpm
+ENV PATH=$PNPM_HOME:$PATH
+RUN corepack enable
+WORKDIR /workspace
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+COPY apps/api/package.json apps/api/package.json
+COPY packages/audit/package.json packages/audit/package.json
+COPY packages/authz/package.json packages/authz/package.json
+COPY packages/config/package.json packages/config/package.json
+COPY packages/database/package.json packages/database/package.json
+COPY packages/storage/package.json packages/storage/package.json
+COPY packages/validation/package.json packages/validation/package.json
+COPY apps/api apps/api
+COPY packages packages
+RUN pnpm install --frozen-lockfile
+RUN pnpm --filter @trustvault/api... build
+
+FROM node:24.4.1-alpine3.22 AS runtime
+ENV NODE_ENV=production
+WORKDIR /workspace
+COPY --from=build --chown=node:node /workspace/node_modules ./node_modules
+COPY --from=build --chown=node:node /workspace/apps/api/package.json ./apps/api/package.json
+COPY --from=build --chown=node:node /workspace/apps/api/node_modules ./apps/api/node_modules
+COPY --from=build --chown=node:node /workspace/apps/api/dist ./apps/api/dist
+COPY --from=build --chown=node:node /workspace/packages ./packages
+USER node
+EXPOSE 4000
+CMD ["node", "apps/api/dist/server.js"]

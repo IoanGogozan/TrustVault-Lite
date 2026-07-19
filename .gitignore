@@ -4,6 +4,7 @@ coverage/
 .env
 .env.*
 !.env.example
+!infra/docker/.env.production.example
 .turbo/
 .next/
 *.log

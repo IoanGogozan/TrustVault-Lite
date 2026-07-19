@@ -98,7 +98,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
 
     setSecurityHeaders(reply, config.env);
 
-    if (origin && isAllowedOrigin(origin)) {
+    if (origin && isAllowedOrigin(origin, config.publicOrigin)) {
       reply.header("Access-Control-Allow-Origin", origin);
       reply.header("Access-Control-Allow-Credentials", "true");
       reply.header("Access-Control-Expose-Headers", "Content-Disposition, Content-Length");
@@ -115,7 +115,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     if (requiresCsrfCheck(request)) {
       const origin = request.headers.origin;
 
-      if (!origin || !isAllowedOrigin(origin)) {
+      if (!origin || !isAllowedOrigin(origin, config.publicOrigin)) {
         return reply.code(403).send({ error: "origin_not_allowed" });
       }
 
@@ -158,7 +158,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   app.options("*", async (request, reply) => {
     const origin = request.headers.origin;
 
-    if (!origin || !isAllowedOrigin(origin)) {
+    if (!origin || !isAllowedOrigin(origin, config.publicOrigin)) {
       return reply.code(403).send({ error: "origin_not_allowed" });
     }
 
@@ -2883,6 +2883,10 @@ function findOrCreateInvitedUser(
   return user;
 }
 
-function isAllowedOrigin(origin: string): boolean {
+function isAllowedOrigin(origin: string, publicOrigin?: string): boolean {
+  if (publicOrigin) {
+    return origin === publicOrigin;
+  }
+
   return origin === "http://localhost:3000" || origin === "http://127.0.0.1:3000";
 }
