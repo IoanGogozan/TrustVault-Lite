@@ -4,11 +4,11 @@
 
 Live URL: `https://vault.norvix.no`
 
-This deployment is a controlled, ephemeral portfolio sandbox, not a production SaaS service. `NODE_ENV=production` enables runtime hardening while the separate `DEMO_MODE=true` switch explicitly enables seeded demo login. The sandbox accepts synthetic data only, runs one API instance, keeps application state in memory, and resets on restart.
+This deployment is a controlled, ephemeral portfolio sandbox, not a production SaaS service. `NODE_ENV=production` enables runtime hardening while the separate `DEMO_MODE=true` switch explicitly enables seeded demo login. The sandbox accepts synthetic data only, runs one API instance, keeps application state in memory, and resets during the scheduled daily API recreation or any earlier restart.
 
 ## Architecture
 
-Public traffic currently traverses Cloudflare before reaching Caddy on TCP 80/443 and UDP 443. Caddy obtains and renews the origin TLS certificate, routes `/api/*` to Fastify, and routes all other requests to Next.js. Web and API share one browser origin, reducing CORS and cookie complexity. PostgreSQL is attached only to an internal Docker network and has no host port; it validates migrations and the RLS implementation path but is not the live business-state adapter.
+Cloudflare provides authoritative DNS only. Public HTTP traffic connects directly to Caddy on TCP 80/443 and UDP 443. Caddy obtains and renews TLS certificates, routes `/api/*` to Fastify, and routes all other requests to Next.js. Web and API share one browser origin, reducing CORS and cookie complexity. PostgreSQL is attached only to an internal Docker network and has no host port; it validates migrations and the RLS implementation path but is not the live business-state adapter.
 
 The standalone production stack is defined in `infra/docker/docker-compose.production.yml`. The actual Norvix home server already runs a shared Caddy edge, so it uses `infra/docker/docker-compose.home-server.yml` and the site fragment `infra/caddy/vault.norvix.no.caddy` instead. Never start the standalone Caddy stack on that server because ports 80/443 are already owned by the shared proxy.
 
@@ -28,8 +28,9 @@ The standalone stack contains:
 - Organization and invitation creation return `404` in the public sandbox.
 - The UI clearly states synthetic-only use and restart-based reset behavior.
 - Only one API replica runs. In-memory sessions, rate limits, objects, scan jobs, and audit events are intentionally non-durable.
+- The systemd daily-reset timer is enabled and the Caddy access log rotates every 24 hours with `roll_keep_for 168h`.
 - Unit/API tests, PostgreSQL RLS integration tests, type checks, production builds, and container health checks pass. The CI ZAP baseline is non-blocking and must be reviewed separately.
-- Public DNS, Cloudflare routing, TLS issuance, security headers, health, and the public internal-route block have been verified. An independent test from a network outside the home LAN remains part of release acceptance.
+- Public DNS-only resolution, direct Caddy routing, TLS issuance, security headers, health, and the public internal-route block have been verified. An independent test from a network outside the home LAN remains part of release acceptance.
 
 OIDC, Redis, S3, ClamAV, multipart uploads, multi-instance scaling, and durable application state are documented extension points, not requirements for this synthetic portfolio sandbox.
 
@@ -57,7 +58,7 @@ Detected server architecture:
 
 TrustVault uses the aliases `trustvault-web` and `trustvault-api` on the external `proxy` network. PostgreSQL and the migration job remain only on the internal `data` network. The home-server Compose file publishes no host ports.
 
-Fastify trusts exactly one proxy hop, which is Caddy in this topology. If Cloudflare proxying is enabled, Caddy must also be configured with Cloudflare's published address ranges as trusted proxies (with strict right-to-left parsing), and direct origin access must be restricted. Otherwise rate limiting and audit hashes identify the Cloudflare edge rather than the end user. DNS-only operation avoids this additional proxy hop and is the initial deployment recommendation.
+Fastify trusts exactly one proxy hop, which is Caddy in this topology. Cloudflare is configured as DNS-only, so it is not part of the HTTP proxy chain. Enabling Cloudflare proxy mode later requires a new trusted-proxy review before deployment.
 
 Before the first deploy, create the server secret file manually:
 
@@ -71,6 +72,18 @@ nano /srv/projects/trustvault/.env
 Also create a Cloudflare `A` record for `vault.norvix.no` pointing to the current public IP, initially set to **DNS only**. Do not add `AAAA` unless IPv6 routing and firewall rules are verified.
 
 The workflow `.github/workflows/deploy-home-server.yml` is manual-only. It refuses non-`main` refs, preserves the server `.env`, validates the external `proxy` network, deploys the application, installs the Caddy site fragment, validates the full Caddy configuration, reloads Caddy, and checks API health from the proxy network. It is currently inactive because a dedicated trusted TrustVault runner has intentionally not been installed for this public repository. The initial deployment and current updates use key-only SSH from the trusted LAN.
+
+Install the tracked retention units during the first deployment and whenever they change:
+
+```sh
+sudo install -m 0644 infra/systemd/trustvault-daily-reset.service /etc/systemd/system/
+sudo install -m 0644 infra/systemd/trustvault-daily-reset.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now trustvault-daily-reset.timer
+systemctl list-timers trustvault-daily-reset.timer
+```
+
+The timer force-recreates only the API at 03:20 Europe/Oslo each day. This deletes in-memory sandbox state and the replaced API container's log no later than 24 hours after creation. The Caddy site log rotates at least daily and deletes rotated logs after no more than 168 hours.
 
 ## Secret preparation
 
@@ -130,7 +143,7 @@ On the Norvix home server, do not run the standalone Compose command above. Unti
 
 ## Reset and recovery
 
-Application state is deliberately disposable and must not be presented as backed up. Restarting the API resets seeded state and removes demo activity, limiting persistence of abuse. PostgreSQL migration data and Caddy state use volumes, but the public UI currently exercises the in-memory adapters. Never upload data that requires recovery.
+Application state is deliberately disposable and must not be presented as backed up. The daily timer or any earlier API restart resets seeded state and removes demo activity, limiting it to at most 24 hours. PostgreSQL migration data and Caddy state use volumes, but the public UI currently exercises the in-memory adapters. Caddy access logs are retained for at most seven days. Never upload data that requires recovery.
 
 ## Rollback
 

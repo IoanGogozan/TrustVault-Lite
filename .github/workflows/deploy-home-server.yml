@@ -56,6 +56,8 @@ jobs:
       - name: Install and validate Caddy route
         run: |
           set -euo pipefail
+          docker compose -f /srv/proxy/compose.yml exec -T caddy \
+            mkdir -p /data/logs
           install -m 0644 \
             /srv/projects/trustvault/infra/caddy/vault.norvix.no.caddy \
             /srv/proxy/sites/vault.norvix.no.caddy
@@ -63,6 +65,19 @@ jobs:
             caddy validate --config /etc/caddy/Caddyfile
           docker compose -f /srv/proxy/compose.yml exec -T caddy \
             caddy reload --config /etc/caddy/Caddyfile
+
+      - name: Install privacy retention timer
+        run: |
+          set -euo pipefail
+          sudo install -m 0644 \
+            /srv/projects/trustvault/infra/systemd/trustvault-daily-reset.service \
+            /etc/systemd/system/trustvault-daily-reset.service
+          sudo install -m 0644 \
+            /srv/projects/trustvault/infra/systemd/trustvault-daily-reset.timer \
+            /etc/systemd/system/trustvault-daily-reset.timer
+          sudo systemctl daemon-reload
+          sudo systemctl enable --now trustvault-daily-reset.timer
+          systemctl is-active --quiet trustvault-daily-reset.timer
 
       - name: Verify internal health
         working-directory: /srv/projects/trustvault

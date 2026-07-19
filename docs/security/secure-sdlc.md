@@ -62,4 +62,4 @@ The repository also contains `.github/workflows/deploy-home-server.yml`. It is m
 - Run cross-tenant tests.
 - Review the risk register.
 - Verify that documentation distinguishes the in-memory runtime from the PostgreSQL/RLS test path.
-- Verify the Cloudflare/Caddy client-IP trust configuration or use DNS-only operation.
+- Verify that Cloudflare remains DNS-only or reassess the Caddy/Fastify trusted-proxy chain before enabling proxy mode.

@@ -1,6 +1,15 @@
 vault.norvix.no {
 	encode zstd gzip
 
+	log {
+		output file /data/logs/trustvault-access.log {
+			roll_size 10MiB
+			roll_keep 7
+			roll_keep_for 168h
+		}
+		format json
+	}
+
 	header {
 		-Server
 		Strict-Transport-Security "max-age=31536000; includeSubDomains"

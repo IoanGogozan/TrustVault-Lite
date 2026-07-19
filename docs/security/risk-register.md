@@ -13,7 +13,7 @@
 | R-009 | CORS/CSRF misconfiguration | High | Medium | CORS allowlist, CSRF tokens, SameSite cookies, negative tests | Mitigated |
 | R-010 | Production identity gap | High | Medium | seeded login requires explicit `DEMO_MODE=true`, accepts only synthetic demo identities, and is unsuitable for a real product; the documented extension path is OIDC Authorization Code Flow with MFA/passkeys | Accepted for controlled sandbox |
 | R-011 | Loss of demo activity on restart | Medium | High | prominent synthetic/ephemeral warning; no durability or recovery promise | Accepted for controlled sandbox |
-| R-012 | Incorrect client IP attribution behind Cloudflare | Medium | Medium | Fastify trusts one Caddy hop; DNS-only is the baseline until Caddy trusts Cloudflare ranges and direct-origin access is restricted | Open |
+| R-012 | Incorrect client IP attribution behind multiple proxies | Medium | Low | Cloudflare is DNS-only, Caddy is the single HTTP proxy, and Fastify trusts exactly one hop | Mitigated |
 
 ## Status Values
 

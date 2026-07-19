@@ -1,0 +1,11 @@
+[Unit]
+Description=Reset TrustVault sandbox every day
+
+[Timer]
+OnCalendar=*-*-* 03:20:00 Europe/Oslo
+Persistent=true
+AccuracySec=1min
+Unit=trustvault-daily-reset.service
+
+[Install]
+WantedBy=timers.target

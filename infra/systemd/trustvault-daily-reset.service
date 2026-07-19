@@ -1,0 +1,9 @@
+[Unit]
+Description=Enforce TrustVault sandbox retention
+Requires=docker.service
+After=docker.service
+ConditionPathExists=/srv/projects/trustvault/.env
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /srv/projects/trustvault/infra/scripts/enforce-retention.sh
