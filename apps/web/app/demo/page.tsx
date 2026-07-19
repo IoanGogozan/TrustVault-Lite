@@ -126,6 +126,10 @@ type DownloadMetadata = {
   expiresAt: string;
 };
 
+type FeedbackArea = "login" | "project" | "document" | "download" | "share" | "apiKey";
+type Feedback = Partial<Record<FeedbackArea, string>>;
+type ApiResult<T> = { ok: true; data: T } | { ok: false; message: string };
+
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
 const demoMode = process.env.NEXT_PUBLIC_DEMO_MODE !== "false";
 const demoAccounts = [
@@ -155,7 +159,7 @@ export default function Home() {
   const [downloadMetadata, setDownloadMetadata] = useState<DownloadMetadata | undefined>();
   const [lastShareToken, setLastShareToken] = useState<string | undefined>();
   const [lastApiKey, setLastApiKey] = useState<string | undefined>();
-  const [statusMessage, setStatusMessage] = useState<string | undefined>();
+  const [feedback, setFeedback] = useState<Feedback>({});
 
   const selectedMembership = useMemo(
     () =>
@@ -163,6 +167,24 @@ export default function Home() {
       currentUser?.memberships[0],
     [currentUser?.memberships, selectedTenantId]
   );
+  const role = selectedMembership?.role;
+  const canCreateProject = role === "owner" || role === "admin";
+  const canCreateDocument = role === "owner" || role === "admin" || role === "member";
+  const canCreateApiKey = role === "owner";
+  const canRevokeApiKey = role === "owner";
+
+  function report(area: FeedbackArea, message?: string) {
+    setFeedback((current) => ({ ...current, [area]: message }));
+  }
+
+  function canReadDocument(document: DocumentRecord) {
+    return document.classification !== "restricted" || role === "owner" || role === "admin" || role === "auditor";
+  }
+
+  function canUpdateDocument(document: DocumentRecord) {
+    return (role === "owner" || role === "admin" || role === "member") &&
+      (document.classification !== "restricted" || role === "owner" || role === "admin");
+  }
 
   useEffect(() => {
     if (!selectedMembership) {
@@ -242,7 +264,7 @@ export default function Home() {
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setStatusMessage(undefined);
+    report("login", undefined);
 
     const response = await fetch(`${apiBaseUrl}/auth/dev-login`, {
       method: "POST",
@@ -252,7 +274,7 @@ export default function Home() {
     });
 
     if (!response.ok) {
-      setStatusMessage("Login failed");
+      report("login", await responseErrorMessage(response));
       return;
     }
 
@@ -276,18 +298,19 @@ export default function Home() {
       return;
     }
 
+    report("project", undefined);
     const response = await apiPost<{ project: Project }>("/projects", selectedMembership.tenantId, {
       name: projectName,
       classification: projectClassification
     });
 
-    if (!response) {
-      setStatusMessage("Project could not be created");
+    if (!response.ok) {
+      report("project", response.message);
       return;
     }
 
-    setSelectedProjectId(response.project.id);
-    setStatusMessage("Project created");
+    setSelectedProjectId(response.data.project.id);
+    report("project", "Project created.");
     await refreshWorkspace(selectedMembership.tenantId);
   }
 
@@ -298,6 +321,7 @@ export default function Home() {
       return;
     }
 
+    report("document", undefined);
     const documentResponse = await apiPost<{ document: DocumentRecord }>(
       "/documents",
       selectedMembership.tenantId,
@@ -308,25 +332,33 @@ export default function Home() {
       }
     );
 
-    if (!documentResponse) {
-      setStatusMessage("Document could not be created");
+    if (!documentResponse.ok) {
+      report("document", documentResponse.message);
       return;
     }
 
     const content = "%PDF-demo evidence";
-    await apiPost(`/documents/${documentResponse.document.id}/versions`, selectedMembership.tenantId, {
+    const versionResponse = await apiPost(`/documents/${documentResponse.data.document.id}/versions`, selectedMembership.tenantId, {
       originalFilename: "vendor-evidence.pdf",
       mimeType: "application/pdf",
       sizeBytes: content.length,
       contentBase64: btoa(content)
     });
-    await apiPost(
-      `/documents/${documentResponse.document.id}/scan`,
+    if (!versionResponse.ok) {
+      report("document", versionResponse.message);
+      return;
+    }
+    const scanResponse = await apiPost(
+      `/documents/${documentResponse.data.document.id}/scan`,
       selectedMembership.tenantId,
       {}
     );
 
-    setStatusMessage("Synthetic PDF uploaded and scanned server-side");
+    if (!scanResponse.ok) {
+      report("document", scanResponse.message);
+      return;
+    }
+    report("document", "Synthetic PDF uploaded and scanned server-side.");
     await refreshWorkspace(selectedMembership.tenantId);
   }
 
@@ -341,7 +373,7 @@ export default function Home() {
     );
 
     if (!response) {
-      setStatusMessage("Download is not available");
+      report("download", "Download is unavailable for this role or document.");
       return;
     }
 
@@ -352,13 +384,13 @@ export default function Home() {
     });
 
     if (!contentResponse.ok) {
-      setStatusMessage("Download is not available");
+      report("download", await responseErrorMessage(contentResponse));
       await refreshWorkspace(selectedMembership.tenantId);
       return;
     }
 
     await saveDownloadResponse(contentResponse, response.download.originalFilename);
-    setStatusMessage("Download started");
+    report("download", "Download started.");
     await refreshWorkspace(selectedMembership.tenantId);
   }
 
@@ -377,13 +409,13 @@ export default function Home() {
       }
     );
 
-    if (!response) {
-      setStatusMessage("Share link could not be created");
+    if (!response.ok) {
+      report("share", response.message);
       return;
     }
 
-    setLastShareToken(response.shareToken);
-    setStatusMessage("Share link created");
+    setLastShareToken(response.data.shareToken);
+    report("share", "Share link created.");
     await refreshWorkspace(selectedMembership.tenantId);
   }
 
@@ -397,13 +429,13 @@ export default function Home() {
     });
 
     if (!response.ok) {
-      setStatusMessage("Share link is not available");
+      report("share", await responseErrorMessage(response));
       await refreshWorkspace(selectedMembership.tenantId);
       return;
     }
 
     await saveDownloadResponse(response, "shared-document");
-    setStatusMessage("Share link download started");
+    report("share", "Share link download started.");
     await refreshWorkspace(selectedMembership.tenantId);
   }
 
@@ -414,12 +446,12 @@ export default function Home() {
 
     const response = await apiDelete(`/share-links/${shareLinkId}`, selectedMembership.tenantId);
 
-    if (!response) {
-      setStatusMessage("Share link could not be revoked");
+    if (!response.ok) {
+      report("share", response.message);
       return;
     }
 
-    setStatusMessage("Share link revoked");
+    report("share", "Share link revoked.");
     await refreshWorkspace(selectedMembership.tenantId);
   }
 
@@ -440,13 +472,13 @@ export default function Home() {
       }
     );
 
-    if (!response) {
-      setStatusMessage("API key could not be created");
+    if (!response.ok) {
+      report("apiKey", response.message);
       return;
     }
 
-    setLastApiKey(response.key);
-    setStatusMessage("API key created");
+    setLastApiKey(response.data.key);
+    report("apiKey", "API key created. Copy it now; it is shown only once.");
     await refreshWorkspace(selectedMembership.tenantId);
   }
 
@@ -460,12 +492,12 @@ export default function Home() {
     });
 
     if (!response.ok) {
-      setStatusMessage("API key request failed");
+      report("apiKey", await responseErrorMessage(response));
       await refreshWorkspace(selectedMembership.tenantId);
       return;
     }
 
-    setStatusMessage("External API request succeeded");
+    report("apiKey", "External API request succeeded.");
     await refreshWorkspace(selectedMembership.tenantId);
   }
 
@@ -476,12 +508,12 @@ export default function Home() {
 
     const response = await apiDelete(`/api-keys/${apiKeyId}`, selectedMembership.tenantId);
 
-    if (!response) {
-      setStatusMessage("API key could not be revoked");
+    if (!response.ok) {
+      report("apiKey", response.message);
       return;
     }
 
-    setStatusMessage("API key revoked");
+    report("apiKey", "API key revoked.");
     await refreshWorkspace(selectedMembership.tenantId);
   }
 
@@ -494,7 +526,7 @@ export default function Home() {
     return response.ok ? ((await response.json()) as T) : undefined;
   }
 
-  async function apiPost<T>(path: string, tenantId: string, body: unknown): Promise<T | undefined> {
+  async function apiPost<T>(path: string, tenantId: string, body: unknown): Promise<ApiResult<T>> {
     const response = await fetch(`${apiBaseUrl}${path}`, {
       method: "POST",
       credentials: "include",
@@ -506,17 +538,21 @@ export default function Home() {
       body: JSON.stringify(body)
     });
 
-    return response.ok ? ((await response.json()) as T) : undefined;
+    return response.ok
+      ? { ok: true, data: (await response.json()) as T }
+      : { ok: false, message: await responseErrorMessage(response) };
   }
 
-  async function apiDelete(path: string, tenantId: string): Promise<boolean> {
+  async function apiDelete(path: string, tenantId: string): Promise<ApiResult<undefined>> {
     const response = await fetch(`${apiBaseUrl}${path}`, {
       method: "DELETE",
       credentials: "include",
       headers: { ...csrfHeaders(), "X-Tenant-Id": tenantId }
     });
 
-    return response.ok;
+    return response.ok
+      ? { ok: true, data: undefined }
+      : { ok: false, message: await responseErrorMessage(response) };
   }
 
   if (!currentUser) {
@@ -548,7 +584,7 @@ export default function Home() {
               ))}
             </select>
           </label>
-          {statusMessage ? <p className="status-message">{statusMessage}</p> : null}
+          {feedback.login ? <p className="status-message" role="status">{feedback.login}</p> : null}
           <button className="primary-action" type="submit">
             <KeyRound aria-hidden="true" />
             Demo login
@@ -723,10 +759,12 @@ export default function Home() {
                   <option value="restricted">Restricted</option>
                 </select>
               </label>
-              <button className="secondary-action" type="submit">
+              <button className="secondary-action" type="submit" disabled={!canCreateProject}>
                 <FolderPlus aria-hidden="true" />
                 Create project
               </button>
+              {!canCreateProject ? <p className="role-guidance">Owner or Admin role required.</p> : null}
+              {feedback.project ? <p className="status-message" role="status">{feedback.project}</p> : null}
             </form>
           </article>
 
@@ -756,11 +794,12 @@ export default function Home() {
                   onChange={(event) => setDocumentTitle(event.target.value)}
                 />
               </label>
-              <button className="secondary-action" type="submit" disabled={!selectedProjectId}>
+              <button className="secondary-action" type="submit" disabled={!selectedProjectId || !canCreateDocument}>
                 <FileUp aria-hidden="true" />
                 Upload PDF
               </button>
-              {statusMessage ? <p className="status-message">{statusMessage}</p> : null}
+              {!canCreateDocument ? <p className="role-guidance">Owner, Admin, or Member role required.</p> : null}
+              {feedback.document ? <p className="status-message" role="status">{feedback.document}</p> : null}
             </form>
           </article>
         </section>
@@ -801,6 +840,8 @@ export default function Home() {
                   <button
                     className="compact-action"
                     type="button"
+                    disabled={!canReadDocument(document)}
+                    title={!canReadDocument(document) ? "This role cannot download restricted documents" : undefined}
                     onClick={() => void handlePrepareDownload(document.id)}
                   >
                     Prepare download
@@ -808,6 +849,8 @@ export default function Home() {
                   <button
                     className="compact-action"
                     type="button"
+                    disabled={!canUpdateDocument(document)}
+                    title={!canUpdateDocument(document) ? "Document update permission required" : undefined}
                     onClick={() => void handleCreateShareLink(document.id)}
                   >
                     Create link
@@ -827,6 +870,7 @@ export default function Home() {
                 </div>
               </dl>
             ) : null}
+            {feedback.download ? <p className="status-message" role="status">{feedback.download}</p> : null}
           </article>
         </section>
 
@@ -858,7 +902,7 @@ export default function Home() {
                   <button
                     className="compact-action"
                     type="button"
-                    disabled={Boolean(shareLink.revokedAt)}
+                    disabled={Boolean(shareLink.revokedAt) || !(role === "owner" || role === "admin" || role === "member")}
                     onClick={() => void handleRevokeShareLink(shareLink.id)}
                   >
                     Revoke
@@ -866,6 +910,7 @@ export default function Home() {
                 </div>
               ))}
             </div>
+            {feedback.share ? <p className="status-message" role="status">{feedback.share}</p> : null}
           </article>
 
           <article className="panel" id="api-keys">
@@ -881,10 +926,11 @@ export default function Home() {
                   onChange={(event) => setApiKeyName(event.target.value)}
                 />
               </label>
-              <button className="secondary-action" type="submit">
+              <button className="secondary-action" type="submit" disabled={!canCreateApiKey}>
                 <Key aria-hidden="true" />
                 Create read key
               </button>
+              {!canCreateApiKey ? <p className="role-guidance">Owner role required to create API keys.</p> : null}
             </form>
             {lastApiKey ? (
               <div className="token-box">
@@ -907,7 +953,7 @@ export default function Home() {
                   <button
                     className="compact-action"
                     type="button"
-                    disabled={Boolean(apiKey.revokedAt)}
+                    disabled={Boolean(apiKey.revokedAt) || !canRevokeApiKey}
                     onClick={() => void handleRevokeApiKey(apiKey.id)}
                   >
                     Revoke
@@ -915,6 +961,7 @@ export default function Home() {
                 </div>
               ))}
             </div>
+            {feedback.apiKey ? <p className="status-message" role="status">{feedback.apiKey}</p> : null}
           </article>
 
           <article className="panel" id="security">
@@ -1010,6 +1057,36 @@ function formatRole(role: Role): string {
 
 function formatClassification(classification: Classification): string {
   return classification.charAt(0).toUpperCase() + classification.slice(1);
+}
+
+async function responseErrorMessage(response: Response): Promise<string> {
+  const errorMessages: Record<string, string> = {
+    permission_denied: "Access denied: your current role does not allow this action.",
+    session_required: "Your demo session expired. Log in again to continue.",
+    csrf_token_invalid: "The security token expired. Log in again to refresh the session.",
+    project_name_required: "Enter a project name.",
+    api_key_name_required: "Enter an API key name.",
+    document_not_available_for_sharing: "Only clean, scanned documents can be shared.",
+    document_not_available_for_download: "The document is not ready for download.",
+    rate_limit_exceeded: "Too many requests. Wait briefly and try again."
+  };
+
+  try {
+    const payload = (await response.json()) as { error?: string };
+    const knownMessage = payload.error ? errorMessages[payload.error] : undefined;
+    if (knownMessage) {
+      return knownMessage;
+    }
+  } catch {
+    // A proxy or empty response may not contain a JSON error body.
+  }
+
+  if (response.status === 401) return "Your demo session expired. Log in again to continue.";
+  if (response.status === 403) return "Access denied by the backend security policy.";
+  if (response.status === 404) return "The requested demo resource was not found.";
+  if (response.status === 409) return "The action conflicts with the current demo state.";
+  if (response.status === 429) return "Too many requests. Wait briefly and try again.";
+  return `The request failed (${response.status}).`;
 }
 
 async function saveDownloadResponse(response: Response, fallbackFilename: string): Promise<void> {
