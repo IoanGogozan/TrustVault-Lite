@@ -12,7 +12,6 @@ import {
   Link2,
   LockKeyhole,
   LogOut,
-  Play,
   ShieldCheck
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
@@ -127,12 +126,12 @@ type DownloadMetadata = {
 };
 
 const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:4000";
+const demoMode = process.env.NEXT_PUBLIC_DEMO_MODE !== "false";
 
 export default function Home() {
   const [currentUser, setCurrentUser] = useState<CurrentUser | undefined>();
   const [selectedTenantId, setSelectedTenantId] = useState<string | undefined>();
   const [loginEmail, setLoginEmail] = useState("owner@acme.test");
-  const [tenantName, setTenantName] = useState("");
   const [projectName, setProjectName] = useState("Vendor Evidence");
   const [projectClassification, setProjectClassification] = useState<Classification>("internal");
   const [documentTitle, setDocumentTitle] = useState("Vendor Security Review");
@@ -261,27 +260,6 @@ export default function Home() {
     setSelectedTenantId(undefined);
   }
 
-  async function handleCreateTenant(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setStatusMessage(undefined);
-
-    const response = await fetch(`${apiBaseUrl}/tenants`, {
-      method: "POST",
-      credentials: "include",
-      headers: { "Content-Type": "application/json", ...csrfHeaders() },
-      body: JSON.stringify({ name: tenantName })
-    });
-
-    if (!response.ok) {
-      setStatusMessage("Organization could not be created");
-      return;
-    }
-
-    setTenantName("");
-    await refreshCurrentUser();
-    setStatusMessage("Organization created");
-  }
-
   async function handleCreateProject(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -333,9 +311,13 @@ export default function Home() {
       sizeBytes: content.length,
       contentBase64: btoa(content)
     });
-    await apiPost("/internal/scan-jobs/process-next", selectedMembership.tenantId, {}, true);
+    await apiPost(
+      `/documents/${documentResponse.document.id}/scan`,
+      selectedMembership.tenantId,
+      {}
+    );
 
-    setStatusMessage("Document uploaded");
+    setStatusMessage("Synthetic PDF uploaded and scanned server-side");
     await refreshWorkspace(selectedMembership.tenantId);
   }
 
@@ -503,19 +485,13 @@ export default function Home() {
     return response.ok ? ((await response.json()) as T) : undefined;
   }
 
-  async function apiPost<T>(
-    path: string,
-    tenantId: string,
-    body: unknown,
-    demoWorker = false
-  ): Promise<T | undefined> {
+  async function apiPost<T>(path: string, tenantId: string, body: unknown): Promise<T | undefined> {
     const response = await fetch(`${apiBaseUrl}${path}`, {
       method: "POST",
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
         ...csrfHeaders(),
-        ...(demoWorker ? { "X-Internal-Worker-Token": "trustvault-demo-worker" } : {}),
         "X-Tenant-Id": tenantId
       },
       body: JSON.stringify(body)
@@ -545,6 +521,13 @@ export default function Home() {
             <h1>TrustVault Lite</h1>
             <p>Secure client evidence portal</p>
           </div>
+          {demoMode ? (
+            <div className="sandbox-notice">
+              <strong>Public security sandbox</strong>
+              <span>Synthetic data only. State resets when the application restarts.</span>
+              <span>Do not upload personal, confidential, or production data.</span>
+            </div>
+          ) : null}
           <label className="field">
             <span>Email</span>
             <input
@@ -573,7 +556,7 @@ export default function Home() {
           </div>
           <div>
             <h1>No active tenant</h1>
-            <p>Create an organization or accept an invitation to continue.</p>
+            <p>This sandbox account has no active seeded tenant.</p>
           </div>
           <button className="primary-action" type="button" onClick={handleLogout}>
             <LogOut aria-hidden="true" />
@@ -608,10 +591,6 @@ export default function Home() {
             <AlertTriangle aria-hidden="true" />
             Security
           </a>
-          <a className="nav-item" href="#organization">
-            <Building2 aria-hidden="true" />
-            Organization
-          </a>
         </nav>
       </aside>
 
@@ -641,6 +620,41 @@ export default function Home() {
             </button>
           </div>
         </header>
+
+        {demoMode ? (
+          <section className="sandbox-banner" aria-label="Sandbox notice">
+            <div>
+              <strong>Controlled, ephemeral security demo</strong>
+              <span>Synthetic data only · single instance · resets on restart</span>
+            </div>
+            <span>Current role: {formatRole(selectedMembership.role)}</span>
+          </section>
+        ) : null}
+
+        <section className="demo-guide" aria-labelledby="demo-guide-title">
+          <div className="demo-guide-copy">
+            <p className="eyebrow">Security controls demonstrated</p>
+            <h2 id="demo-guide-title">Follow the evidence trail</h2>
+            <p>
+              Tenant isolation · RBAC/ABAC · RLS defense-in-depth · CSRF · secure sessions ·
+              hashed API keys · private file delivery · audit logging
+            </p>
+          </div>
+          <div className="demo-steps">
+            <button className="guide-step" type="button" onClick={() => void handleLogout()}>
+              <strong>1</strong>
+              <span>Switch role and observe denied access</span>
+            </button>
+            <a className="guide-step" href="#evidence">
+              <strong>2</strong>
+              <span>Upload and scan a synthetic document</span>
+            </a>
+            <a className="guide-step" href="#api-keys">
+              <strong>3</strong>
+              <span>Create and revoke an API key or share link</span>
+            </a>
+          </div>
+        </section>
 
         <section className="summary-grid" aria-label="Security summary">
           {buildSecuritySignals(securityDashboard).map((signal) => {
@@ -958,36 +972,6 @@ export default function Home() {
             </div>
           </article>
 
-          <article className="panel" id="organization">
-            <div className="panel-heading">
-              <h2>Create organization</h2>
-              <Building2 aria-hidden="true" />
-            </div>
-            <form className="stack-form" onSubmit={handleCreateTenant}>
-              <label className="field">
-                <span>Organization name</span>
-                <input
-                  value={tenantName}
-                  onChange={(event) => setTenantName(event.target.value)}
-                  placeholder="Northwind Security"
-                />
-              </label>
-              <button className="secondary-action" type="submit">
-                <Play aria-hidden="true" />
-                Create
-              </button>
-            </form>
-            <dl className="details compact">
-              <div>
-                <dt>User</dt>
-                <dd>{currentUser.name}</dd>
-              </div>
-              <div>
-                <dt>Role</dt>
-                <dd>{formatRole(selectedMembership.role)}</dd>
-              </div>
-            </dl>
-          </article>
         </section>
       </section>
     </main>

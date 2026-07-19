@@ -3,6 +3,8 @@ export type AppEnvironment = "development" | "test" | "production";
 export type BaseConfig = {
   env: AppEnvironment;
   appName: string;
+  demoMode: boolean;
+  publicOrigin?: string;
 };
 
 export function readBaseConfig(env: NodeJS.ProcessEnv = process.env): BaseConfig {
@@ -12,13 +14,61 @@ export function readBaseConfig(env: NodeJS.ProcessEnv = process.env): BaseConfig
     throw new Error(`Invalid NODE_ENV: ${appEnv}`);
   }
 
+  const publicOrigin = readPublicOrigin(env.PUBLIC_ORIGIN);
+  const demoMode = readBoolean(env.DEMO_MODE, appEnv !== "production", "DEMO_MODE");
+
+  if (appEnv === "production" && !publicOrigin) {
+    throw new Error("PUBLIC_ORIGIN is required in production");
+  }
+
   return {
     env: appEnv,
-    appName: env.APP_NAME ?? "TrustVault Lite"
+    appName: env.APP_NAME ?? "TrustVault Lite",
+    demoMode,
+    ...(publicOrigin ? { publicOrigin } : {})
   };
+}
+
+function readBoolean(value: string | undefined, defaultValue: boolean, name: string): boolean {
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  if (value === "true") {
+    return true;
+  }
+
+  if (value === "false") {
+    return false;
+  }
+
+  throw new Error(`${name} must be either true or false`);
+}
+
+function readPublicOrigin(value: string | undefined): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  let url: URL;
+
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("PUBLIC_ORIGIN must be a valid URL origin");
+  }
+
+  if (url.origin !== value || url.username || url.password || url.pathname !== "/") {
+    throw new Error("PUBLIC_ORIGIN must contain only scheme, host, and optional port");
+  }
+
+  if (url.protocol !== "https:" && url.hostname !== "localhost" && url.hostname !== "127.0.0.1") {
+    throw new Error("PUBLIC_ORIGIN must use HTTPS outside local development");
+  }
+
+  return url.origin;
 }
 
 function isAppEnvironment(value: string): value is AppEnvironment {
   return value === "development" || value === "test" || value === "production";
 }
-

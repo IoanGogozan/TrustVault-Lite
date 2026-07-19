@@ -32,6 +32,53 @@ describe("phase 1 auth and tenant foundation", () => {
     expect(cookie).toContain("tv_csrf=");
   });
 
+  it("keeps demo login disabled in production unless demo mode is explicitly enabled", async () => {
+    const app = buildAppWithEnv({
+      NODE_ENV: "production",
+      DEMO_MODE: "false",
+      PUBLIC_ORIGIN: "https://vault.norvix.no"
+    });
+
+    const response = await app.inject({
+      method: "POST",
+      url: "/auth/dev-login",
+      payload: { email: "owner@acme.test" }
+    });
+    const scan = await app.inject({
+      method: "POST",
+      url: "/documents/document_acme_policy/scan",
+      payload: {}
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(scan.statusCode).toBe(404);
+  });
+
+  it("allows demo login but blocks tenant and invitation creation in the public sandbox", async () => {
+    const app = buildAppWithEnv({
+      NODE_ENV: "production",
+      DEMO_MODE: "true",
+      PUBLIC_ORIGIN: "https://vault.norvix.no"
+    });
+    const cookie = await login(app, "owner@acme.test");
+
+    const tenant = await app.inject({
+      method: "POST",
+      url: "/tenants",
+      headers: { cookie },
+      payload: { name: "Not available publicly" }
+    });
+    const invitation = await app.inject({
+      method: "POST",
+      url: "/tenant/invitations",
+      headers: { cookie, "x-tenant-id": "tenant_acme" },
+      payload: { email: "new@example.test", role: "viewer" }
+    });
+
+    expect(tenant.statusCode).toBe(404);
+    expect(invitation.statusCode).toBe(404);
+  });
+
   it("sets baseline security headers", async () => {
     const app = buildApp({ store: createDemoStore() });
 
@@ -1149,6 +1196,35 @@ describe("phase 1 auth and tenant foundation", () => {
     expect(contentDownload.json()).toEqual({ error: "file_not_available_until_clean_scan" });
   });
 
+  it("processes a queued mock scan through an authenticated domain action without a worker token", async () => {
+    const store = createDemoStore();
+    const app = buildApp({ store });
+    const cookie = await login(app, "member@acme.test");
+
+    const upload = await app.inject({
+      method: "POST",
+      url: "/documents/document_acme_policy/versions",
+      headers: { cookie, "x-tenant-id": "tenant_acme" },
+      payload: pdfUploadPayload()
+    });
+    const scan = await app.inject({
+      method: "POST",
+      url: "/documents/document_acme_policy/scan",
+      headers: { cookie, "x-tenant-id": "tenant_acme" },
+      payload: {}
+    });
+
+    expect(scan.statusCode).toBe(200);
+    expect(scan.json().scanJob).toMatchObject({
+      documentId: "document_acme_policy",
+      versionId: upload.json().version.id,
+      status: "completed"
+    });
+    expect(store.documentVersions.find((version) => version.id === upload.json().version.id)?.scanStatus).toBe(
+      "clean"
+    );
+  });
+
   it("allows download metadata after a clean scan without exposing storage path", async () => {
     const app = buildApp({ store: createDemoStore() });
     const memberCookie = await login(app, "member@acme.test");
@@ -2202,6 +2278,25 @@ async function login(app: ReturnType<typeof buildApp>, email: string): Promise<s
   }
 
   return cookie;
+}
+
+function buildAppWithEnv(env: Record<string, string>): ReturnType<typeof buildApp> {
+  const previousValues = new Map(
+    Object.keys(env).map((key) => [key, process.env[key]] as const)
+  );
+
+  try {
+    Object.assign(process.env, env);
+    return buildApp({ store: createDemoStore() });
+  } finally {
+    for (const [key, value] of previousValues) {
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
 }
 
 function headerValue(value: string | string[] | number | undefined): string {

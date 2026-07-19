@@ -13,7 +13,7 @@ export type ScanJobQueue = {
     storageKey: string;
     queuedBy: string;
   }): Promise<ScanJob>;
-  processNext(tenantId?: string): Promise<ScanJob | undefined>;
+  processNext(tenantId?: string, documentId?: string): Promise<ScanJob | undefined>;
 };
 
 export class InMemoryScanJobQueue implements ScanJobQueue {
@@ -60,10 +60,12 @@ export class InMemoryScanJobQueue implements ScanJobQueue {
     return job;
   }
 
-  async processNext(tenantId?: string): Promise<ScanJob | undefined> {
+  async processNext(tenantId?: string, documentId?: string): Promise<ScanJob | undefined> {
     const job = this.store.scanJobs.find(
       (candidate) =>
-        candidate.status === "queued" && (!tenantId || candidate.tenantId === tenantId)
+        candidate.status === "queued" &&
+        (!tenantId || candidate.tenantId === tenantId) &&
+        (!documentId || candidate.documentId === documentId)
     );
 
     if (!job) {

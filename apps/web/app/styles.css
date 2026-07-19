@@ -76,6 +76,21 @@ button:disabled {
   color: var(--muted);
 }
 
+.sandbox-notice {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  color: #62440f;
+  background: #fff8e8;
+  border: 1px solid #e7c979;
+  border-radius: 6px;
+  font-size: 0.82rem;
+}
+
+.sandbox-notice span {
+  line-height: 1.4;
+}
+
 .primary-action,
 .secondary-action,
 .icon-action,
@@ -169,6 +184,89 @@ button:disabled {
   display: grid;
   align-content: start;
   gap: 20px;
+}
+
+.sandbox-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  color: #62440f;
+  background: #fff8e8;
+  border: 1px solid #e7c979;
+  border-radius: 8px;
+}
+
+.sandbox-banner div {
+  display: grid;
+  gap: 3px;
+}
+
+.sandbox-banner span {
+  font-size: 0.82rem;
+}
+
+.demo-guide {
+  display: grid;
+  gap: 18px;
+  padding: 20px;
+  background: #eaf5f1;
+  border: 1px solid #b8d5ca;
+  border-radius: 8px;
+}
+
+.demo-guide-copy h2,
+.demo-guide-copy p {
+  margin: 0;
+}
+
+.demo-guide-copy h2 {
+  margin: 4px 0 8px;
+}
+
+.demo-guide-copy p:last-child {
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.demo-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.guide-step {
+  min-height: 68px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid #b8ccc5;
+  border-radius: 6px;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.guide-step strong {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  background: var(--accent);
+  border-radius: 999px;
+}
+
+.guide-step span {
+  font-size: 0.85rem;
+  font-weight: 700;
+  line-height: 1.35;
 }
 
 .topbar,
@@ -482,7 +580,8 @@ button:disabled {
   }
 
   .summary-grid,
-  .content-grid {
+  .content-grid,
+  .demo-steps {
     grid-template-columns: 1fr;
   }
 }
@@ -493,7 +592,8 @@ button:disabled {
   }
 
   .topbar,
-  .topbar-actions {
+  .topbar-actions,
+  .sandbox-banner {
     align-items: stretch;
     flex-direction: column;
   }
